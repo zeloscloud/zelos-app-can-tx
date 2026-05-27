@@ -8,17 +8,17 @@
 /** CAN agent extension ID this app pins to. */
 export const CAN_EXTENSION_ID = "zeloscloud.zelos-extension-can";
 
-/** v1 action paths (namespace/action). Names mirror CAN_TRANSMIT.md §5 Block D.
- *  Until Phase 2 reconciles the extension, these are the target names; the
- *  mock host uses them and the real extension must register matching paths. */
+/** v1 action paths. Layout is `{service}/{registry}/{method}` — the agent SDK
+ *  prefixes both the service-init name (`can`) and the registration name (`tx`)
+ *  to each method on `CanActionsRouter`. See `zelos-extension-can/cli/app.py`. */
 export const CAN_ACTIONS = {
-  getTxState: "can/get_tx_state",
-  listMessages: "can/list_messages",
-  sendRaw: "can/send_raw",
-  startPeriodicRaw: "can/start_periodic_raw",
-  sendMessage: "can/send_message",
-  startPeriodicMessage: "can/start_periodic_message",
-  stopPeriodic: "can/stop_periodic",
+  getTxState: "can/tx/get_tx_state",
+  listMessages: "can/tx/list_messages",
+  sendRaw: "can/tx/send_raw",
+  startPeriodicRaw: "can/tx/start_periodic_raw",
+  sendMessage: "can/tx/send_message",
+  startPeriodicMessage: "can/tx/start_periodic_message",
+  stopPeriodic: "can/tx/stop_periodic",
 } as const;
 
 export type CanActionPath = (typeof CAN_ACTIONS)[keyof typeof CAN_ACTIONS];
