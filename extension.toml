@@ -1,0 +1,29 @@
+name = "CAN Transmit"
+version = "0.1.0"
+description = "Transmit CAN frames (raw + DBC, one-shot + periodic) through the Zelos CAN agent extension."
+author = "Zelos"
+repository = "https://github.com/zeloscloud/zelos-app-can-tx"
+icon = "assets/icon.svg"
+readme = "README.md"
+
+# Compatibility — pinned to the host that ships the actions.* + extensions.list bridge surface.
+[zelos]
+version = ">=26.0.3"
+
+[host]
+type = "app"
+
+[host.app]
+kind = "web_app"
+entry = "dist/index.html"
+
+[package]
+paths = ["dist"]
+
+# This app drives the CAN agent extension exclusively. The host should surface a
+# clear "missing dependency" state at install time if the required extension is
+# not present, instead of leaving the user with a useless "extension missing"
+# banner. See CAN_TRANSMIT.md §2 decision 11 and §10 open decisions.
+[[requires]]
+extension = "zeloscloud.zelos-extension-can"
+version = ">=0.1.12"
