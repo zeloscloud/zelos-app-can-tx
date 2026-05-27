@@ -1,9 +1,8 @@
 /** Wire shapes shared by the bridge wrapper, mock host, and capability resolver.
  *
- *  Mirrors `features/CAN_TRANSMIT.md` §5 Block E (state model) and Block D
- *  (action contract). Kept hand-maintained — the agent extension does not yet
- *  emit ts-rs bindings for these shapes. Until it does, the app fixtures and
- *  agent serializer must stay in lock-step here. */
+ *  Kept hand-maintained — the agent extension does not yet emit ts-rs bindings
+ *  for these shapes. Until it does, the app fixtures and the agent serializer
+ *  must stay in lock-step here. */
 
 /** CAN agent extension ID this app pins to. */
 export const CAN_EXTENSION_ID = "zeloscloud.zelos-extension-can";

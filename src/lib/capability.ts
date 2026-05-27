@@ -1,9 +1,9 @@
 /** CAN-TX capability resolver — pure function. No React, no IO.
  *
- *  Mirrors CAN_TRANSMIT.md §5 Block C: two-variant discriminated union
- *  (`ready` | `disabled`) with one `DisabledReason` per fixture state. UI
- *  switches on `reason` to render the banner; tests assert one fixture per
- *  reason without spinning up a React tree.
+ *  Two-variant discriminated union (`ready` | `disabled`) with one
+ *  `DisabledReason` per fixture state. UI switches on `reason` to render the
+ *  banner; tests assert one fixture per reason without spinning up a React
+ *  tree.
  *
  *  Inputs come from `extensions.list`, `actions.list`, the selected agent +
  *  workspace mode, and the latest `get_tx_state` snapshot (when available). */

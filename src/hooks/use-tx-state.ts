@@ -1,8 +1,8 @@
 /** TanStack Query hook for the `get_tx_state` snapshot.
  *
- *  Per CAN_TRANSMIT.md §8.6 + Pass 2: refetch every 2 s while any periodic is
- *  active, disabled otherwise. No bespoke cache layer — TanStack Query already
- *  dedupes concurrent queries via `staleTime` and `gcTime`. */
+ *  Refetch every 2 s while any periodic is active, disabled otherwise. No
+ *  bespoke cache layer — TanStack Query already dedupes concurrent queries
+ *  via `staleTime` and `gcTime`. */
 
 import type { BridgeTransport } from "@zeloscloud/app-extension-sdk";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";

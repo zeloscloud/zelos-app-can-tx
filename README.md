@@ -5,12 +5,10 @@ CAN transmit marketplace app extension. Pairs with the
 agent extension to send CAN frames (raw + DBC, one-shot + periodic) through any
 connected Zelos agent.
 
-Design: [`features/CAN_TRANSMIT.md`](https://github.com/zeloscloud/src/blob/main/features/CAN_TRANSMIT.md) in the monorepo.
-
 ## Status
 
-Phase 5 scaffold. The bridge + capability resolver + mock host are wired; the
-PCAN-style UI lands in Phase 6.
+Scaffold + foundation. The bridge client, capability resolver, mock host, and
+polling layer are wired; the full PCAN-style UI is a follow-up.
 
 ## Layout
 

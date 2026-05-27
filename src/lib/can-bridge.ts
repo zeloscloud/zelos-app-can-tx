@@ -42,7 +42,10 @@ export async function getTxState(bridge: BridgeTransport, agent: string): Promis
 }
 
 /** Read the DBC catalog the CAN extension already has loaded for a bus.
- *  The app never parses or selects DBCs (CAN_TRANSMIT.md §2 decision 11). */
+ *  The app never parses or selects DBCs itself — the bus's DBC is fixed by
+ *  the agent extension's config, and this app composes against whatever is
+ *  loaded. That rules out encode mismatch between what the app thinks the
+ *  bus uses and what the extension actually encodes with. */
 export async function listMessages(bridge: BridgeTransport, agent: string, bus: string): Promise<DbcCatalog> {
   const res = await actions.execute<DbcCatalog>(bridge, {
     agent,

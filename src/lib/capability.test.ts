@@ -1,4 +1,4 @@
-/** T14 (CAN_TRANSMIT.md §7.1): capability resolver `ready` vs `disabled` reasons.
+/** Capability resolver: `ready` vs `disabled` reasons.
  *
  *  Resolver is a pure function so tests assert one fixture per reason without
  *  spinning up React. Each case below maps to a fixture state the mock host

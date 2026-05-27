@@ -23,7 +23,7 @@ paths = ["dist"]
 # This app drives the CAN agent extension exclusively. The host should surface a
 # clear "missing dependency" state at install time if the required extension is
 # not present, instead of leaving the user with a useless "extension missing"
-# banner. See CAN_TRANSMIT.md §2 decision 11 and §10 open decisions.
+# banner.
 [[requires]]
 extension = "zeloscloud.zelos-extension-can"
 version = ">=0.1.12"
