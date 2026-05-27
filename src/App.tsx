@@ -1,27 +1,27 @@
-/** v0 shell — exercises the bridge + capability resolver + mock host end-to-end.
+/** v0 shell — exercises bridge + capability resolver + per-bus mock host end-to-end.
  *
- *  Deliberately not the final PCAN-style UI (that lands in Phase 6). What this
- *  proves out for Phase 5:
+ *  Not the final PCAN-style UI. What this proves out for the scaffold:
  *
  *  - Bridge handshake + standalone MockBridge installation.
+ *  - Per-agent + per-bus discovery via `actions.list` keys.
  *  - Capability resolver renders every disabled reason and the ready state.
- *  - A raw send + start-periodic + stop round-trip mutates `get_tx_state`.
- *
- *  When Phase 6 starts, this file becomes the wiring layer; the composer,
- *  periodics table, and connection bar move into dedicated components. */
+ *  - A raw send + start-periodic + stop round-trip mutates `get_tx_state`. */
 
 import { useExtensionInfo, useZelosBridge } from "@zeloscloud/app-extension-sdk/react";
 import React from "react";
+import { useBusSnapshot } from "./hooks/use-tx-state";
 import { useCanCapability } from "./hooks/use-capability";
 import { sendRaw, startPeriodicRaw, stopPeriodic } from "./lib/can-bridge";
-import type { CanTxCapability, DisabledReason } from "./lib/capability";
+import type { CanTxCapability, DisabledReason, ReadyBus } from "./lib/capability";
 
 const DISABLED_COPY: Record<DisabledReason, string> = {
   "no-agent": "Select an agent to enable CAN transmit.",
   "not-live": "CAN transmit requires a LIVE workspace. Switch to LIVE to continue.",
   "can-extension-missing": "The Zelos CAN extension is not installed on this agent. Install it from the marketplace.",
-  "can-extension-stopped": "The CAN extension is installed but not running. Start it from the extensions panel or `zelos extensions start zeloscloud.zelos-extension-can`.",
-  "can-actions-missing": "The CAN extension is running but did not register the expected actions. Update the CAN extension to a version that supports the actions listed below.",
+  "can-extension-stopped":
+    "The CAN extension is installed but not running. Start it from the extensions panel or `zelos extensions start zeloscloud.zelos-extension-can`.",
+  "no-ready-buses":
+    "The CAN extension is running but no bus has the full action set required for transmit. Check the extension's bus configuration.",
 };
 
 export function App() {
@@ -66,15 +66,11 @@ function CapabilityView({
   onSelectAgent: (agent: string) => void;
   bridge: import("@zeloscloud/app-extension-sdk").BridgeTransport;
 }) {
-  const { capability, isLoading, refetch } = useCanCapability({
+  const { capability, refetch } = useCanCapability({
     bridge,
     workspaceModeKind,
     selectedAgent,
   });
-
-  if (isLoading && capability.kind === "disabled" && capability.reason === "no-agent") {
-    return <CenteredMessage>Discovering agents…</CenteredMessage>;
-  }
 
   if (capability.kind === "disabled") {
     return (
@@ -105,13 +101,13 @@ function DisabledBanner({
       </h2>
       <p className="text-sm">{DISABLED_COPY[capability.reason]}</p>
 
-      {capability.reason === "no-agent" && (
-        <AgentPicker onSelectAgent={onSelectAgent} />
-      )}
+      {capability.reason === "no-agent" && <AgentPicker onSelectAgent={onSelectAgent} />}
 
-      {capability.reason === "can-actions-missing" && capability.missing && (
-        <pre className="rounded bg-background p-3 text-xs">
-          {capability.missing.map((p) => `• ${p}`).join("\n")}
+      {capability.reason === "no-ready-buses" && capability.partialBuses && capability.partialBuses.length > 0 && (
+        <pre className="rounded bg-background p-3 text-xs whitespace-pre-wrap">
+          {capability.partialBuses
+            .map((b) => `${b.name} (missing: ${b.missing.join(", ")})`)
+            .join("\n")}
         </pre>
       )}
 
@@ -132,8 +128,9 @@ function DisabledBanner({
 }
 
 function AgentPicker({ onSelectAgent }: { onSelectAgent: (agent: string) => void }) {
-  // v0 shell: hardcoded mock agents. Phase 6 replaces this with a real selector
-  // sourced from `actions.list` / `extensions.list` fan-out keys.
+  // v0 shell: hardcoded mock agents. The final UI will source the agent list
+  // from the bridge once that primitive lands; for now this is enough to
+  // exercise the capability resolver in standalone mode.
   const knownAgents = ["localhost:2300", "remote:2300"];
   return (
     <div className="flex flex-wrap gap-2">
@@ -160,6 +157,93 @@ function ReadyView({
   bridge: import("@zeloscloud/app-extension-sdk").BridgeTransport;
   onRefresh: () => void;
 }) {
+  // Auto-select the first ready bus; the user can switch with the picker below.
+  const [selectedBus, setSelectedBus] = React.useState<string>(capability.buses[0]?.name ?? "");
+  React.useEffect(() => {
+    if (!capability.buses.some((b) => b.name === selectedBus)) {
+      setSelectedBus(capability.buses[0]?.name ?? "");
+    }
+  }, [capability.buses, selectedBus]);
+
+  return (
+    <section className="space-y-4">
+      <header className="rounded-lg border border-border bg-card p-4 text-sm space-y-2">
+        <div className="flex items-center justify-between">
+          <span>
+            Agent: <code>{capability.agent}</code> · Extension v{capability.extension.version}
+          </span>
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="rounded border border-border px-3 py-1 text-xs hover:bg-background"
+          >
+            Refresh
+          </button>
+        </div>
+        <BusPicker
+          buses={capability.buses}
+          selected={selectedBus}
+          onSelect={setSelectedBus}
+        />
+      </header>
+
+      {selectedBus ? (
+        <BusPanel bridge={bridge} agent={capability.agent} bus={selectedBus} />
+      ) : (
+        <CenteredMessage>No bus selected.</CenteredMessage>
+      )}
+    </section>
+  );
+}
+
+function BusPicker({
+  buses,
+  selected,
+  onSelect,
+}: {
+  buses: readonly ReadyBus[];
+  selected: string;
+  onSelect: (bus: string) => void;
+}) {
+  if (buses.length <= 1) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Bus: <code>{selected || "—"}</code>
+      </p>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="text-muted-foreground">Bus:</span>
+      {buses.map((b) => (
+        <button
+          key={b.name}
+          type="button"
+          onClick={() => onSelect(b.name)}
+          aria-pressed={b.name === selected}
+          className={
+            b.name === selected
+              ? "rounded border border-border bg-background px-3 py-1"
+              : "rounded border border-border px-3 py-1 hover:bg-background"
+          }
+        >
+          {b.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BusPanel({
+  bridge,
+  agent,
+  bus,
+}: {
+  bridge: import("@zeloscloud/app-extension-sdk").BridgeTransport;
+  agent: string;
+  bus: string;
+}) {
+  const snapshotQuery = useBusSnapshot(bridge, agent, bus);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -173,47 +257,25 @@ function ReadyView({
       return undefined;
     } finally {
       setBusy(null);
-      onRefresh();
+      void snapshotQuery.refetch();
     }
   }
 
-  const buses = capability.state?.buses ?? [];
-  const periodics = buses.flatMap((b) => b.periodics);
+  const busState = snapshotQuery.data?.bus;
+  const periodics = busState?.periodics ?? [];
 
   return (
-    <section className="space-y-4">
-      <header className="rounded-lg border border-border bg-card p-4 text-sm">
-        <div className="flex items-center justify-between">
-          <span>
-            Agent: <code>{capability.agent}</code> · Extension v{capability.extension.version}
-          </span>
-          <button
-            type="button"
-            onClick={onRefresh}
-            className="rounded border border-border px-3 py-1 text-xs hover:bg-background"
-          >
-            Refresh
-          </button>
-        </div>
-      </header>
-
+    <div className="space-y-4">
       <section className="rounded-lg border border-border bg-card p-4 space-y-3">
-        <h2 className="text-sm font-semibold">Buses</h2>
-        {buses.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No buses yet — extension has not reported state.</p>
+        <h2 className="text-sm font-semibold">Bus status</h2>
+        {!busState ? (
+          <p className="text-xs text-muted-foreground">Loading snapshot…</p>
         ) : (
-          <ul className="space-y-2 text-xs">
-            {buses.map((b) => (
-              <li key={b.name} className="flex justify-between rounded bg-background px-3 py-2">
-                <span>
-                  <strong>{b.name}</strong> ({b.interface}) · status {b.status}
-                </span>
-                <span className="text-muted-foreground">
-                  tx_errors: {b.metrics?.txErrors ?? 0} · rx: {b.metrics?.messagesReceived ?? 0}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <p className="text-xs">
+            <strong>{busState.name}</strong> ({busState.interface}) · status {busState.status} ·
+            tx_errors: {busState.metrics?.txErrors ?? 0} ·
+            rx: {busState.metrics?.messagesReceived ?? 0}
+          </p>
         )}
       </section>
 
@@ -222,27 +284,22 @@ function ReadyView({
         <div className="flex gap-2">
           <button
             type="button"
-            disabled={busy !== null || buses.length === 0}
+            disabled={busy !== null}
             onClick={() =>
               run("send", () =>
-                sendRaw(bridge, capability.agent, {
-                  bus: buses[0]!.name,
-                  canId: "0x100",
-                  data: "01 02 03 04",
-                }),
+                sendRaw(bridge, agent, bus, { canId: "0x100", data: "01 02 03 04" }),
               )
             }
             className="rounded border border-border px-3 py-1.5 text-xs hover:bg-background disabled:opacity-50"
           >
-            Send once
+            Send 0x100
           </button>
           <button
             type="button"
-            disabled={busy !== null || buses.length === 0}
+            disabled={busy !== null}
             onClick={() =>
               run("start-periodic", () =>
-                startPeriodicRaw(bridge, capability.agent, {
-                  bus: buses[0]!.name,
+                startPeriodicRaw(bridge, agent, bus, {
                   canId: "0x200",
                   data: "aa bb",
                   periodMs: 100,
@@ -272,7 +329,7 @@ function ReadyView({
                 <button
                   type="button"
                   disabled={busy !== null}
-                  onClick={() => run("stop", () => stopPeriodic(bridge, capability.agent, { taskId: p.taskId }))}
+                  onClick={() => run("stop", () => stopPeriodic(bridge, agent, bus, { taskId: p.taskId }))}
                   className="rounded border border-border px-2 py-0.5 hover:bg-background disabled:opacity-50"
                 >
                   Stop
@@ -282,7 +339,7 @@ function ReadyView({
           </ul>
         )}
       </section>
-    </section>
+    </div>
   );
 }
 

@@ -1,16 +1,22 @@
 /** Typed wrapper over the generic `actions.*` + `extensions.list` bridge methods.
  *
- *  Why a wrapper: the SDK facades take freeform JSON; this file pins the CAN-side
- *  action paths and parameter shapes so callers can't accidentally pass the
- *  wrong action name or drop required fields. The translation is intentionally
- *  thin — no caching, no retries, no debouncing. Let TanStack Query own those. */
+ *  Why a wrapper: the SDK facades take freeform JSON; this file pins the
+ *  CAN action paths and parameter shapes so callers can't accidentally
+ *  pass the wrong action name or drop required fields. The translation is
+ *  intentionally thin — no caching, no retries, no debouncing. Let TanStack
+ *  Query own those.
+ *
+ *  Each call addresses a single (agent, bus) pair. Paths land as
+ *  `can/<bus>/<method>`; the bus is implicit in the codec instance on the
+ *  agent side so action params don't carry a `bus` field. */
 
 import { actions, extensions, type BridgeTransport, type ExtensionEntry } from "@zeloscloud/app-extension-sdk";
 
 import {
-  CAN_ACTIONS,
+  canActionPath,
+  CAN_METHODS,
   type CanActionResult,
-  type CanTransmitState,
+  type CanBusSnapshot,
   type DbcCatalog,
   type SendMessageParams,
   type SendRawParams,
@@ -20,8 +26,8 @@ import {
   type StopPeriodicParams,
 } from "./types";
 
-/** Per-agent action discovery — used by the capability resolver to know
- *  whether the CAN extension has registered the actions we need. */
+/** Per-agent action discovery — used by the capability resolver to figure out
+ *  which buses are present (every bus surfaces `can/<bus>/get_tx_state`). */
 export async function listActionsPerAgent(bridge: BridgeTransport): Promise<Record<string, string[]>> {
   return await actions.list(bridge);
 }
@@ -31,11 +37,10 @@ export async function listExtensionsPerAgent(bridge: BridgeTransport): Promise<R
   return await extensions.list(bridge);
 }
 
-/** Single-shot state snapshot — buses, periodics, tx/rx metrics. */
-export async function getTxState(bridge: BridgeTransport, agent: string): Promise<CanTransmitState> {
-  const res = await actions.execute<CanTransmitState>(bridge, {
+export async function getBusSnapshot(bridge: BridgeTransport, agent: string, bus: string): Promise<CanBusSnapshot> {
+  const res = await actions.execute<CanBusSnapshot>(bridge, {
     agent,
-    action: CAN_ACTIONS.getTxState,
+    action: canActionPath(bus, CAN_METHODS.getTxState),
   });
   ensurePass(res);
   return res.result;
@@ -49,59 +54,86 @@ export async function getTxState(bridge: BridgeTransport, agent: string): Promis
 export async function listMessages(bridge: BridgeTransport, agent: string, bus: string): Promise<DbcCatalog> {
   const res = await actions.execute<DbcCatalog>(bridge, {
     agent,
-    action: CAN_ACTIONS.listMessages,
-    params: { bus },
+    action: canActionPath(bus, CAN_METHODS.listMessages),
   });
   ensurePass(res);
   return res.result;
 }
 
-export async function sendRaw(bridge: BridgeTransport, agent: string, params: SendRawParams): Promise<void> {
-  const res = await actions.execute(bridge, { agent, action: CAN_ACTIONS.sendRaw, params });
+export async function sendRaw(
+  bridge: BridgeTransport,
+  agent: string,
+  bus: string,
+  params: SendRawParams,
+): Promise<void> {
+  const res = await actions.execute(bridge, {
+    agent,
+    action: canActionPath(bus, CAN_METHODS.sendRaw),
+    params,
+  });
   ensurePass(res);
 }
 
 export async function startPeriodicRaw(
   bridge: BridgeTransport,
   agent: string,
+  bus: string,
   params: StartPeriodicRawParams,
 ): Promise<StartPeriodicResult> {
   const res = await actions.execute<StartPeriodicResult>(bridge, {
     agent,
-    action: CAN_ACTIONS.startPeriodicRaw,
+    action: canActionPath(bus, CAN_METHODS.startPeriodicRaw),
     params,
   });
   ensurePass(res);
   return res.result;
 }
 
-export async function sendMessage(bridge: BridgeTransport, agent: string, params: SendMessageParams): Promise<void> {
-  const res = await actions.execute(bridge, { agent, action: CAN_ACTIONS.sendMessage, params });
+export async function sendMessage(
+  bridge: BridgeTransport,
+  agent: string,
+  bus: string,
+  params: SendMessageParams,
+): Promise<void> {
+  const res = await actions.execute(bridge, {
+    agent,
+    action: canActionPath(bus, CAN_METHODS.sendMessage),
+    params,
+  });
   ensurePass(res);
 }
 
 export async function startPeriodicMessage(
   bridge: BridgeTransport,
   agent: string,
+  bus: string,
   params: StartPeriodicMessageParams,
 ): Promise<StartPeriodicResult> {
   const res = await actions.execute<StartPeriodicResult>(bridge, {
     agent,
-    action: CAN_ACTIONS.startPeriodicMessage,
+    action: canActionPath(bus, CAN_METHODS.startPeriodicMessage),
     params,
   });
   ensurePass(res);
   return res.result;
 }
 
-export async function stopPeriodic(bridge: BridgeTransport, agent: string, params: StopPeriodicParams): Promise<void> {
-  const res = await actions.execute(bridge, { agent, action: CAN_ACTIONS.stopPeriodic, params });
+export async function stopPeriodic(
+  bridge: BridgeTransport,
+  agent: string,
+  bus: string,
+  params: StopPeriodicParams,
+): Promise<void> {
+  const res = await actions.execute(bridge, {
+    agent,
+    action: canActionPath(bus, CAN_METHODS.stopPeriodic),
+    params,
+  });
   ensurePass(res);
 }
 
 function ensurePass(res: CanActionResult): void {
   if (res.status === "pass" || res.status === "done") return;
-  // Surface the host's status + any string `reason` if the extension supplied one.
   const reason =
     res.result != null && typeof res.result === "object" && "reason" in res.result
       ? String((res.result as { reason: unknown }).reason)

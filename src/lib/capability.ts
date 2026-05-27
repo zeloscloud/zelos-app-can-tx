@@ -1,55 +1,64 @@
 /** CAN-TX capability resolver — pure function. No React, no IO.
  *
- *  Two-variant discriminated union (`ready` | `disabled`) with one
- *  `DisabledReason` per fixture state. UI switches on `reason` to render the
- *  banner; tests assert one fixture per reason without spinning up a React
- *  tree.
+ *  Per-agent, per-bus check. A bus is ready when:
+ *    1. workspace mode is LIVE
+ *    2. an agent is selected
+ *    3. the CAN extension is installed + running on that agent
+ *    4. the bus's action paths (`can/<bus>/<method>` for every required
+ *       method) are all present in actions.list
  *
- *  Inputs come from `extensions.list`, `actions.list`, the selected agent +
- *  workspace mode, and the latest `get_tx_state` snapshot (when available). */
+ *  Output is `{ kind: "ready", buses: ReadyBus[] }` (one or more buses are
+ *  usable) or `{ kind: "disabled", reason }` with a precise reason. */
 
 import type { ExtensionEntry } from "@zeloscloud/app-extension-sdk";
 
-import { CAN_EXTENSION_ID, REQUIRED_CAN_ACTIONS, type CanTransmitState } from "./types";
+import {
+  canActionPath,
+  CAN_EXTENSION_ID,
+  extractBusNames,
+  REQUIRED_CAN_METHODS,
+} from "./types";
 
 export type DisabledReason =
   | "no-agent"
   | "not-live"
   | "can-extension-missing"
   | "can-extension-stopped"
-  | "can-actions-missing";
+  | "no-ready-buses";
+
+export interface ReadyBus {
+  name: string;
+  /** Methods available as `can/<name>/<method>` paths on the agent. */
+  methods: readonly string[];
+}
 
 export type CanTxCapability =
   | {
       kind: "ready";
       agent: string;
       extension: ExtensionEntry;
-      actions: readonly string[];
-      state: CanTransmitState | null;
+      buses: readonly ReadyBus[];
     }
   | {
       kind: "disabled";
       reason: DisabledReason;
       agent?: string;
       extension?: ExtensionEntry;
-      /** Action paths the app expected but did not find. Only populated when
-       *  `reason === "can-actions-missing"`. */
-      missing?: readonly string[];
+      /** Bus names whose required action paths were incomplete. Only populated
+       *  when `reason === "no-ready-buses"`. */
+      partialBuses?: ReadonlyArray<{ name: string; missing: readonly string[] }>;
     };
 
 export interface ResolveCapabilityInputs {
   /** Workspace mode reported by the bridge snapshot. */
   workspaceModeKind: "NONE" | "LIVE" | "TRACEPATH" | "TRACE";
-  /** Agent the user has selected. `null` until the user picks one (or when
-   *  exactly one agent is connected and the UI auto-selects it). */
+  /** Agent the user has selected. `null` until the user picks one (or the UI
+   *  auto-selects the only connected agent). */
   selectedAgent: string | null;
   /** Installed extensions per agent from `extensions.list`. */
   extensionsByAgent: Record<string, ExtensionEntry[]> | null;
   /** Action paths per agent from `actions.list`. */
   actionsByAgent: Record<string, string[]> | null;
-  /** Latest `get_tx_state` snapshot, when available. May be `null` while the
-   *  initial query is in flight; the resolver does not require it for `ready`. */
-  txState: CanTransmitState | null;
 }
 
 export function resolveCanTxCapability(input: ResolveCapabilityInputs): CanTxCapability {
@@ -68,10 +77,31 @@ export function resolveCanTxCapability(input: ResolveCapabilityInputs): CanTxCap
   if (canExt.state !== "running") {
     return { kind: "disabled", reason: "can-extension-stopped", agent, extension: canExt };
   }
-  const actions = input.actionsByAgent?.[agent] ?? [];
-  const missing = REQUIRED_CAN_ACTIONS.filter((path) => !actions.includes(path));
-  if (missing.length > 0) {
-    return { kind: "disabled", reason: "can-actions-missing", agent, extension: canExt, missing };
+  const actionPaths = input.actionsByAgent?.[agent] ?? [];
+  const allBusNames = extractBusNames(actionPaths);
+  const actionSet = new Set(actionPaths);
+
+  const ready: ReadyBus[] = [];
+  const partial: Array<{ name: string; missing: string[] }> = [];
+  for (const busName of allBusNames) {
+    const methods: string[] = [];
+    const missing: string[] = [];
+    for (const method of REQUIRED_CAN_METHODS) {
+      if (actionSet.has(canActionPath(busName, method))) methods.push(method);
+      else missing.push(method);
+    }
+    if (missing.length === 0) ready.push({ name: busName, methods });
+    else partial.push({ name: busName, missing });
   }
-  return { kind: "ready", agent, extension: canExt, actions, state: input.txState };
+
+  if (ready.length === 0) {
+    return {
+      kind: "disabled",
+      reason: "no-ready-buses",
+      agent,
+      extension: canExt,
+      partialBuses: partial,
+    };
+  }
+  return { kind: "ready", agent, extension: canExt, buses: ready };
 }

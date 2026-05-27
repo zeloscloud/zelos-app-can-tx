@@ -41,10 +41,10 @@ npm run check        # lint + tsc
 
 Override the standalone mock state via `?mock=<scenario>`:
 
-- `?mock=ready` (default) — CAN extension running, all actions present
+- `?mock=ready` (default) — CAN extension running, two buses (`busA`, `busB`) both ready
 - `?mock=can-extension-missing`
 - `?mock=can-extension-stopped`
-- `?mock=can-actions-missing`
+- `?mock=no-ready-buses` — extension running but no bus has the full action set
 - `?mock=multi-agent` — `localhost:2300` missing the extension, `remote:2300` ready
 
 ### Bridge SDK (local link)

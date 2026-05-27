@@ -4,34 +4,55 @@
  *  for these shapes. Until it does, the app fixtures and the agent serializer
  *  must stay in lock-step here. */
 
-/** CAN agent extension ID this app pins to. */
+/** CAN agent extension ID this app pins to in the manifest `requires` block.
+ *  The agent reports this same ID in `get_tx_state.extension.id`. */
 export const CAN_EXTENSION_ID = "zeloscloud.zelos-extension-can";
 
-/** v1 action paths. Layout is `{service}/{registry}/{method}` — the agent SDK
- *  prefixes both the service-init name (`can`) and the registration name (`tx`)
- *  to each method on `CanActionsRouter`. See `zelos-extension-can/cli/app.py`. */
-export const CAN_ACTIONS = {
-  getTxState: "can/tx/get_tx_state",
-  listMessages: "can/tx/list_messages",
-  sendRaw: "can/tx/send_raw",
-  startPeriodicRaw: "can/tx/start_periodic_raw",
-  sendMessage: "can/tx/send_message",
-  startPeriodicMessage: "can/tx/start_periodic_message",
-  stopPeriodic: "can/tx/stop_periodic",
+/** Bare method names exposed by the CAN extension. Each registered bus surfaces
+ *  these as `can/<bus>/<method>` on the agent. Use {@link canActionPath} to
+ *  build a full path. */
+export const CAN_METHODS = {
+  getTxState: "get_tx_state",
+  listMessages: "list_messages",
+  sendRaw: "send_raw",
+  startPeriodicRaw: "start_periodic_raw",
+  sendMessage: "send_message",
+  startPeriodicMessage: "start_periodic_message",
+  stopPeriodic: "stop_periodic",
 } as const;
 
-export type CanActionPath = (typeof CAN_ACTIONS)[keyof typeof CAN_ACTIONS];
+export type CanMethodName = (typeof CAN_METHODS)[keyof typeof CAN_METHODS];
 
-/** Action paths the app requires to be present on the agent before TX is enabled. */
-export const REQUIRED_CAN_ACTIONS: readonly CanActionPath[] = [
-  CAN_ACTIONS.getTxState,
-  CAN_ACTIONS.listMessages,
-  CAN_ACTIONS.sendRaw,
-  CAN_ACTIONS.startPeriodicRaw,
-  CAN_ACTIONS.sendMessage,
-  CAN_ACTIONS.startPeriodicMessage,
-  CAN_ACTIONS.stopPeriodic,
+/** Method names every CAN bus must register before the app considers it ready. */
+export const REQUIRED_CAN_METHODS: readonly CanMethodName[] = [
+  CAN_METHODS.getTxState,
+  CAN_METHODS.listMessages,
+  CAN_METHODS.sendRaw,
+  CAN_METHODS.startPeriodicRaw,
+  CAN_METHODS.sendMessage,
+  CAN_METHODS.startPeriodicMessage,
+  CAN_METHODS.stopPeriodic,
 ];
+
+/** Build the full action path for a given bus + method. */
+export function canActionPath(bus: string, method: CanMethodName | string): string {
+  return `can/${bus}/${method}`;
+}
+
+/** Pattern matching `can/<bus>/<method>`. Capture group 1 is the bus name. */
+export const CAN_ACTION_PATH_RE = /^can\/([^/]+)\/[^/]+$/;
+
+/** Extract the unique set of bus names from a list of action paths. */
+export function extractBusNames(actionPaths: readonly string[]): string[] {
+  const buses = new Set<string>();
+  for (const path of actionPaths) {
+    const match = CAN_ACTION_PATH_RE.exec(path);
+    if (match?.[1]) buses.add(match[1]);
+  }
+  return [...buses].sort();
+}
+
+// ─── Bus snapshot shapes ────────────────────────────────────────────────────
 
 export interface CanBusMetrics {
   txErrors?: number;
@@ -50,7 +71,6 @@ export interface CanBusDbcMetadata {
 
 export interface CanPeriodicSlot {
   taskId: string;
-  bus: string;
   canId: number;
   isExtended: boolean;
   isFd: boolean;
@@ -67,7 +87,7 @@ export interface CanPeriodicSlot {
   lastError?: string | null;
 }
 
-export interface CanBusTxState {
+export interface CanBusState {
   name: string;
   interface: string;
   channel?: string;
@@ -78,15 +98,19 @@ export interface CanBusTxState {
   lastError?: string | null;
 }
 
-export interface CanTransmitState {
+/** What `can/<bus>/get_tx_state` returns. One bus per call; the app composes
+ *  cross-bus snapshots itself if it wants a multi-bus view. */
+export interface CanBusSnapshot {
   capturedAtUnixMs: number;
   extension: {
     id: string;
     version: string;
     state: "installed" | "running" | "stopped" | "failed" | string;
   };
-  buses: CanBusTxState[];
+  bus: CanBusState;
 }
+
+// ─── DBC catalog shapes ─────────────────────────────────────────────────────
 
 export interface DbcSignal {
   name: string;
@@ -99,7 +123,7 @@ export interface DbcSignal {
   min?: number;
   max?: number;
   unit?: string;
-  valueTable?: Record<number, string>;
+  valueTable?: Record<string, string>;
   muxIndicator?: boolean;
   muxValue?: number | null;
 }
@@ -116,18 +140,17 @@ export interface DbcMessage {
 export interface DbcCatalog {
   bus: string;
   dbcName?: string;
-  dbcHash?: string;
   messages: DbcMessage[];
 }
 
-/** Result envelope returned by the host for `actions.execute`. */
+// ─── Action parameter + result shapes ───────────────────────────────────────
+
 export interface CanActionResult<T = unknown> {
   status: "pass" | "fail" | "done" | string;
   result: T;
 }
 
 export interface SendRawParams {
-  bus: string;
   /** Hex string, with or without `0x`. */
   canId: string;
   /** Hex bytes; spaces optional. */
@@ -141,7 +164,6 @@ export interface StartPeriodicRawParams extends SendRawParams {
 }
 
 export interface SendMessageParams {
-  bus: string;
   message: string;
   mux?: number | string | null;
   signals: Record<string, unknown>;
