@@ -43,6 +43,10 @@ export async function getBusSnapshot(bridge: BridgeTransport, agent: string, bus
   const res = await actions.execute<CanBusSnapshot>(bridge, {
     agent,
     action: canActionPath(bus, CAN_METHODS.getTxState),
+    // Always send a JSON object on the wire, even for no-arg actions. NAPI
+    // marshals `undefined` to a null and some action runtimes reject that;
+    // explicit `{}` is the safe shape.
+    params: {},
   });
   ensurePass(res);
   return res.result;

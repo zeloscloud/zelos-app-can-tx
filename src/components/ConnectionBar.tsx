@@ -22,6 +22,9 @@ export interface ConnectionBarProps {
   selectedBus: string;
   onSelectBus: (bus: string) => void;
   onRefresh: () => void;
+  onCopyLogs: () => void;
+  /** When non-null, the refresh/copy buttons show this label for ~2s as feedback. */
+  toast?: string | null;
 }
 
 export function ConnectionBar({
@@ -33,6 +36,8 @@ export function ConnectionBar({
   selectedBus,
   onSelectBus,
   onRefresh,
+  onCopyLogs,
+  toast,
 }: ConnectionBarProps) {
   return (
     <header className="rounded-lg border border-border bg-card p-4 text-sm space-y-3">
@@ -40,13 +45,24 @@ export function ConnectionBar({
         <span className="text-xs text-muted-foreground">
           {agents.length} agent{agents.length === 1 ? "" : "s"} discovered · {bridgeMode}
         </span>
-        <button
-          type="button"
-          onClick={onRefresh}
-          className="rounded border border-border px-3 py-1 text-xs hover:bg-background"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {toast && <span className="text-xs text-muted-foreground">{toast}</span>}
+          <button
+            type="button"
+            onClick={onCopyLogs}
+            title="Copy a JSON snapshot of the app + discovery + current bus state to the clipboard for bug reports"
+            className="rounded border border-border px-3 py-1 text-xs hover:bg-background"
+          >
+            Copy logs
+          </button>
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="rounded border border-border px-3 py-1 text-xs hover:bg-background"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
       <AgentChips agents={agents} selectedAgent={selectedAgent} onSelectAgent={onSelectAgent} />
       {buses.length > 0 && (
@@ -65,6 +81,10 @@ function AgentChips({
   selectedAgent: string | null;
   onSelectAgent: (agent: string) => void;
 }) {
+  // Every agent button is clickable regardless of readiness — clicking a
+  // non-ready agent focuses it so the panel below renders its status detail
+  // (with the CLI hint to install or start the extension). Disabling them
+  // would leave the user with nowhere to click for a fix.
   return (
     <div
       className="flex flex-wrap items-center gap-2 text-xs"
@@ -72,20 +92,15 @@ function AgentChips({
       aria-label="Connected agents"
     >
       {agents.map((a) => {
-        const ready = a.kind === "ready";
         const selected = a.agent === selectedAgent;
         const classes = selected
           ? "rounded border border-border bg-background px-3 py-1 font-medium"
-          : ready
-            ? "rounded border border-border px-3 py-1 hover:bg-background cursor-pointer"
-            : "rounded border border-border px-3 py-1 opacity-60 cursor-not-allowed";
-        const handleClick = ready ? () => onSelectAgent(a.agent) : undefined;
+          : "rounded border border-border px-3 py-1 hover:bg-background cursor-pointer";
         return (
           <button
             key={a.agent}
             type="button"
-            onClick={handleClick}
-            disabled={!ready}
+            onClick={() => onSelectAgent(a.agent)}
             aria-pressed={selected}
             title={statusLabel(a)}
             className={classes}

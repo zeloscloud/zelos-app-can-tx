@@ -1,6 +1,6 @@
-/** Orchestration shell. Multi-agent discovery is automatic; the UI auto-focuses
- *  the sole ready agent when there's only one and offers a picker for many.
- *  No "connect agent" dance — every agent the desktop is talking to shows up. */
+/** Orchestration shell. Owns the discovery query, the snapshot query for the
+ *  focused (agent, bus), the busy/error state for in-flight mutations, and
+ *  the Copy-logs button's debug snapshot. BusPanel is now presentational. */
 
 import type { BridgeTransport } from "@zeloscloud/app-extension-sdk";
 import { useExtensionInfo, useZelosBridge } from "@zeloscloud/app-extension-sdk/react";
@@ -12,7 +12,8 @@ import { RawComposer, type ParsedFrame } from "./components/RawComposer";
 import { useCanDiscovery } from "./hooks/use-capability";
 import { useBusSnapshot } from "./hooks/use-tx-state";
 import { sendRaw, startPeriodicRaw, stopPeriodic } from "./lib/can-bridge";
-import { statusLabel, type AgentStatus, type ReadyBus } from "./lib/capability";
+import type { AgentStatus, ReadyBus } from "./lib/capability";
+import type { CanBusState } from "./lib/types";
 
 export function App() {
   const bridge = useZelosBridge();
@@ -38,6 +39,8 @@ export function App() {
         bridge={bridge.bridge}
         bridgeMode={bridge.mode}
         workspaceModeKind={bridge.workspace?.modeKind ?? "NONE"}
+        appId={info?.id ?? null}
+        appVersion={info?.version ?? null}
       />
     </main>
   );
@@ -47,33 +50,40 @@ function DiscoveryView({
   bridge,
   bridgeMode,
   workspaceModeKind,
+  appId,
+  appVersion,
 }: {
   bridge: BridgeTransport;
   bridgeMode: "embedded" | "standalone";
   workspaceModeKind: "NONE" | "LIVE" | "TRACEPATH" | "TRACE";
+  appId: string | null;
+  appVersion: string | null;
 }) {
   const { discovery, isLoading, refetch } = useCanDiscovery({ bridge, workspaceModeKind });
   const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
   const [selectedBus, setSelectedBus] = React.useState<string>("");
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [actionError, setActionError] = React.useState<string | null>(null);
+  const [copyToast, setCopyToast] = React.useState<string | null>(null);
 
-  // Auto-focus a ready agent when (a) nothing's selected yet or (b) the
-  // previously-selected agent disappeared or changed status. Default to the
-  // first ready one in the sorted-by-address list.
+  // Auto-focus: prefer the first ready agent so the user lands directly in
+  // the TX panel; otherwise fall back to the first agent of any status so
+  // they see its AgentStatusDetail card (with the CLI hint) immediately,
+  // instead of an empty hint card pointing at non-clickable chrome.
   React.useEffect(() => {
     if (discovery.kind !== "ready") return;
-    const ready = discovery.agents.filter((a) => a.kind === "ready");
-    if (ready.length === 0) {
+    if (discovery.agents.length === 0) {
       if (selectedAgent !== null) setSelectedAgent(null);
       return;
     }
-    const current = ready.find((a) => a.agent === selectedAgent);
-    if (!current) {
-      setSelectedAgent(ready[0]?.agent ?? null);
-    }
+    const stillThere = discovery.agents.find((a) => a.agent === selectedAgent);
+    if (stillThere) return;
+    const ready = discovery.agents.find((a) => a.kind === "ready");
+    setSelectedAgent((ready ?? discovery.agents[0])?.agent ?? null);
   }, [discovery, selectedAgent]);
 
-  // Compute the focused agent + its bus list before any conditional returns
-  // so the bus-selection effect runs on every render path (hooks rules).
+  // Compute focused agent + bus list BEFORE conditional returns so the
+  // bus-selection effect runs on every render (hooks rules).
   const focusedAgent =
     discovery.kind === "ready"
       ? discovery.agents.find((a) => a.agent === selectedAgent) ?? null
@@ -83,12 +93,85 @@ function DiscoveryView({
     [focusedAgent],
   );
 
-  // Reset bus selection when the focused agent changes or its bus list shifts.
   React.useEffect(() => {
     if (!buses.some((b) => b.name === selectedBus)) {
       setSelectedBus(buses[0]?.name ?? "");
     }
   }, [buses, selectedBus]);
+
+  // Snapshot for the focused (agent, bus). Lifted here so the Copy-logs
+  // handler can include the snapshot data + any query error in its dump.
+  const snapshotQuery = useBusSnapshot(
+    bridge,
+    focusedAgent?.kind === "ready" ? focusedAgent.agent : null,
+    selectedBus || null,
+  );
+
+  async function run<T>(label: string, fn: () => Promise<T>): Promise<T | undefined> {
+    setBusy(label);
+    setActionError(null);
+    try {
+      return await fn();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+      return undefined;
+    } finally {
+      setBusy(null);
+      void snapshotQuery.refetch();
+    }
+  }
+
+  const handleCopyLogs = React.useCallback(async () => {
+    const log = {
+      timestamp: new Date().toISOString(),
+      app: { id: appId, version: appVersion },
+      bridge: { mode: bridgeMode, workspaceMode: workspaceModeKind },
+      discovery,
+      focused: { agent: selectedAgent, bus: selectedBus },
+      snapshot: {
+        data: snapshotQuery.data ?? null,
+        error:
+          snapshotQuery.error instanceof Error
+            ? snapshotQuery.error.message
+            : snapshotQuery.error ?? null,
+        isLoading: snapshotQuery.isLoading,
+        isFetching: snapshotQuery.isFetching,
+        isError: snapshotQuery.isError,
+        dataUpdatedAt: snapshotQuery.dataUpdatedAt,
+        errorUpdatedAt: snapshotQuery.errorUpdatedAt,
+      },
+      lastAction: { inFlight: busy, error: actionError },
+    };
+    const text = JSON.stringify(log, null, 2);
+    // Always log to devtools so the user has a fallback path if the
+    // clipboard call rejects (some iframe sandboxes block it).
+    // biome-ignore lint/suspicious/noConsole: deliberate user-facing escape hatch
+    console.log("[CAN-TX debug log]\n" + text);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyToast("Copied to clipboard");
+    } catch {
+      setCopyToast("Clipboard blocked — see devtools console");
+    }
+    window.setTimeout(() => setCopyToast(null), 2500);
+  }, [
+    appId,
+    appVersion,
+    bridgeMode,
+    workspaceModeKind,
+    discovery,
+    selectedAgent,
+    selectedBus,
+    snapshotQuery.data,
+    snapshotQuery.error,
+    snapshotQuery.isLoading,
+    snapshotQuery.isFetching,
+    snapshotQuery.isError,
+    snapshotQuery.dataUpdatedAt,
+    snapshotQuery.errorUpdatedAt,
+    busy,
+    actionError,
+  ]);
 
   if (discovery.kind === "disabled") {
     return <CapabilityBanner reason={discovery.reason} onRefresh={refetch} />;
@@ -109,24 +192,44 @@ function DiscoveryView({
         selectedBus={selectedBus}
         onSelectBus={setSelectedBus}
         onRefresh={refetch}
+        onCopyLogs={handleCopyLogs}
+        toast={copyToast}
       />
 
       {focusedAgent?.kind === "ready" && selectedBus ? (
-        <BusPanel bridge={bridge} agent={focusedAgent.agent} bus={selectedBus} />
-      ) : focusedAgent && focusedAgent.kind !== "ready" ? (
+        <BusPanel
+          bridge={bridge}
+          agent={focusedAgent.agent}
+          bus={selectedBus}
+          busState={snapshotQuery.data?.bus}
+          snapshotError={snapshotQuery.error instanceof Error ? snapshotQuery.error : null}
+          busy={busy}
+          actionError={actionError}
+          run={run}
+        />
+      ) : focusedAgent ? (
         <AgentStatusDetail status={focusedAgent} />
-      ) : (
-        <NoReadyAgentsHint discovery={discovery} />
-      )}
+      ) : null}
     </div>
   );
 }
 
 function AgentStatusDetail({ status }: { status: AgentStatus }) {
+  const headline =
+    status.kind === "extension-missing"
+      ? "CAN extension not installed on this agent"
+      : status.kind === "extension-stopped"
+        ? "CAN extension not running on this agent"
+        : status.kind === "no-ready-buses"
+          ? "CAN extension is running but no bus is fully usable"
+          : "Ready";
   return (
     <section className="rounded-lg border border-border bg-card p-4 text-sm space-y-2">
       <p>
-        <code>{status.agent}</code> · {statusLabel(status)}
+        <strong>{headline}</strong>
+        <span className="ml-2 text-muted-foreground">
+          (<code>{status.agent}</code>)
+        </span>
       </p>
       {status.kind === "extension-missing" && (
         <p className="text-xs text-muted-foreground">
@@ -134,16 +237,16 @@ function AgentStatusDetail({ status }: { status: AgentStatus }) {
           <code className="rounded bg-background px-1.5 py-0.5">
             zelos extensions install-local &lt;path-to-zelos-extension-can&gt;
           </code>{" "}
-          and refresh.
+          and Refresh.
         </p>
       )}
       {status.kind === "extension-stopped" && (
         <p className="text-xs text-muted-foreground">
-          Start the extension via the extensions panel or{" "}
+          Start it via the desktop's extensions panel, or run{" "}
           <code className="rounded bg-background px-1.5 py-0.5">
             zelos extensions start {status.extension?.id ?? "local.can"}
-          </code>
-          .
+          </code>{" "}
+          and Refresh.
         </p>
       )}
       {status.kind === "no-ready-buses" && status.partialBuses && status.partialBuses.length > 0 && (
@@ -155,56 +258,30 @@ function AgentStatusDetail({ status }: { status: AgentStatus }) {
   );
 }
 
-function NoReadyAgentsHint({
-  discovery,
-}: {
-  discovery: Extract<ReturnType<typeof useCanDiscovery>["discovery"], { kind: "ready" }>;
-}) {
-  const allMissing = discovery.agents.every((a) => a.kind === "extension-missing");
-  return (
-    <section className="rounded-lg border border-border bg-card p-4 text-sm space-y-2">
-      <p className="text-muted-foreground">
-        {allMissing
-          ? "None of the connected agents have the CAN extension installed."
-          : "No agent is ready for TX yet — click a chip above for status details."}
-      </p>
-    </section>
-  );
-}
-
 function BusPanel({
   bridge,
   agent,
   bus,
+  busState,
+  snapshotError,
+  busy,
+  actionError,
+  run,
 }: {
   bridge: BridgeTransport;
   agent: string;
   bus: string;
+  busState: CanBusState | undefined;
+  snapshotError: Error | null;
+  busy: string | null;
+  actionError: string | null;
+  run: <T>(label: string, fn: () => Promise<T>) => Promise<T | undefined>;
 }) {
-  const snapshotQuery = useBusSnapshot(bridge, agent, bus);
-  const [busy, setBusy] = React.useState<string | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-
-  async function run<T>(label: string, fn: () => Promise<T>): Promise<T | undefined> {
-    setBusy(label);
-    setError(null);
-    try {
-      return await fn();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      return undefined;
-    } finally {
-      setBusy(null);
-      void snapshotQuery.refetch();
-    }
-  }
-
-  const busState = snapshotQuery.data?.bus;
   const periodics = busState?.periodics ?? [];
 
   return (
     <div className="space-y-4">
-      <BusStatusCard busy={busy} error={error} busState={busState} />
+      <BusStatusCard busState={busState} snapshotError={snapshotError} actionError={actionError} />
 
       <RawComposer
         busy={busy !== null}
@@ -224,17 +301,24 @@ function BusPanel({
 }
 
 function BusStatusCard({
-  busy,
-  error,
   busState,
+  snapshotError,
+  actionError,
 }: {
-  busy: string | null;
-  error: string | null;
-  busState: import("./lib/types").CanBusState | undefined;
+  busState: CanBusState | undefined;
+  snapshotError: Error | null;
+  actionError: string | null;
 }) {
+  // Fixed two-line area so transitions between loading / error / loaded
+  // don't shift the composer + table below.
   return (
-    <section className="rounded-lg border border-border bg-card p-4 text-xs space-y-1">
-      {busState ? (
+    <section className="rounded-lg border border-border bg-card p-4 text-xs space-y-1 min-h-[3.25rem]">
+      {snapshotError ? (
+        <p className="text-destructive">
+          Snapshot fetch failed: {snapshotError.message}. Click <strong>Refresh</strong> after
+          fixing the agent-side issue.
+        </p>
+      ) : busState ? (
         <p>
           <strong>{busState.name}</strong> ({busState.interface}) · status {busState.status} ·
           tx_errors: {busState.metrics?.tx_errors ?? 0} · rx:{" "}
@@ -243,8 +327,7 @@ function BusStatusCard({
       ) : (
         <p className="text-muted-foreground">Loading snapshot…</p>
       )}
-      {busy && <p className="text-muted-foreground">{busy}…</p>}
-      {error && <p className="text-destructive">{error}</p>}
+      {actionError && <p className="text-destructive">Last action: {actionError}</p>}
     </section>
   );
 }
@@ -269,6 +352,5 @@ function CenteredMessage({
   );
 }
 
-// Re-export this so consumers (tests, etc.) don't need to know about the
-// inner type structure. Currently unused; keep for future component tests.
+// Re-export so consumers can reference the type without importing from capability.ts.
 export type { ReadyBus };
