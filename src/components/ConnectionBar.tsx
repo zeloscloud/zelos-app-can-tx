@@ -1,15 +1,23 @@
-/** Persistent chrome strip — agent + bus + status + refresh.
+/** Persistent chrome strip — agent chips + bus picker + refresh.
  *
- *  Rendered when capability is `ready`. Multi-bus shows a button-bar picker;
- *  single-bus collapses to a static label. Refresh re-runs the discovery
- *  queries (extensions.list + actions.list) and the current bus snapshot. */
+ *  The agent strip shows every agent the desktop is currently talking to,
+ *  each with a status dot:
+ *
+ *      ● ready (clickable when not already selected)
+ *      ◯ extension stopped / missing / no usable buses (display-only)
+ *
+ *  Multi-bus shows a button-bar picker below the agent strip; single-bus
+ *  collapses to a static label. Refresh re-runs the discovery queries and
+ *  the focused bus's snapshot. */
 
-import type { ReadyBus } from "../lib/capability";
+import type { AgentStatus, ReadyBus } from "../lib/capability";
+import { statusLabel } from "../lib/capability";
 
 export interface ConnectionBarProps {
-  agent: string;
-  extensionVersion: string;
   bridgeMode: "embedded" | "standalone";
+  agents: readonly AgentStatus[];
+  selectedAgent: string | null;
+  onSelectAgent: (agent: string) => void;
   buses: readonly ReadyBus[];
   selectedBus: string;
   onSelectBus: (bus: string) => void;
@@ -17,26 +25,21 @@ export interface ConnectionBarProps {
 }
 
 export function ConnectionBar({
-  agent,
-  extensionVersion,
   bridgeMode,
+  agents,
+  selectedAgent,
+  onSelectAgent,
   buses,
   selectedBus,
   onSelectBus,
   onRefresh,
 }: ConnectionBarProps) {
   return (
-    <header className="rounded-lg border border-border bg-card p-4 text-sm space-y-2">
+    <header className="rounded-lg border border-border bg-card p-4 text-sm space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-3 text-xs">
-          <span>
-            Agent: <code className="rounded bg-background px-1.5 py-0.5">{agent}</code>
-          </span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-muted-foreground">CAN ext v{extensionVersion}</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-muted-foreground">{bridgeMode}</span>
-        </div>
+        <span className="text-xs text-muted-foreground">
+          {agents.length} agent{agents.length === 1 ? "" : "s"} discovered · {bridgeMode}
+        </span>
         <button
           type="button"
           onClick={onRefresh}
@@ -45,8 +48,72 @@ export function ConnectionBar({
           Refresh
         </button>
       </div>
-      <BusPicker buses={buses} selected={selectedBus} onSelect={onSelectBus} />
+      <AgentChips agents={agents} selectedAgent={selectedAgent} onSelectAgent={onSelectAgent} />
+      {buses.length > 0 && (
+        <BusPicker buses={buses} selected={selectedBus} onSelect={onSelectBus} />
+      )}
     </header>
+  );
+}
+
+function AgentChips({
+  agents,
+  selectedAgent,
+  onSelectAgent,
+}: {
+  agents: readonly AgentStatus[];
+  selectedAgent: string | null;
+  onSelectAgent: (agent: string) => void;
+}) {
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2 text-xs"
+      role="group"
+      aria-label="Connected agents"
+    >
+      {agents.map((a) => {
+        const ready = a.kind === "ready";
+        const selected = a.agent === selectedAgent;
+        const classes = selected
+          ? "rounded border border-border bg-background px-3 py-1 font-medium"
+          : ready
+            ? "rounded border border-border px-3 py-1 hover:bg-background cursor-pointer"
+            : "rounded border border-border px-3 py-1 opacity-60 cursor-not-allowed";
+        const handleClick = ready ? () => onSelectAgent(a.agent) : undefined;
+        return (
+          <button
+            key={a.agent}
+            type="button"
+            onClick={handleClick}
+            disabled={!ready}
+            aria-pressed={selected}
+            title={statusLabel(a)}
+            className={classes}
+          >
+            <StatusDot kind={a.kind} /> <code className="font-mono">{a.agent}</code>
+            <span className="ml-2 text-muted-foreground">· {statusLabel(a)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function StatusDot({ kind }: { kind: AgentStatus["kind"] }) {
+  // Use raw color classes so the dot is legible regardless of theme tokens.
+  const color =
+    kind === "ready"
+      ? "bg-green-500"
+      : kind === "extension-stopped"
+        ? "bg-amber-500"
+        : kind === "no-ready-buses"
+          ? "bg-amber-500"
+          : "bg-red-500";
+  return (
+    <span
+      aria-hidden
+      className={`inline-block h-2 w-2 rounded-full ${color}`}
+    />
   );
 }
 

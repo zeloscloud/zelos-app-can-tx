@@ -1,46 +1,27 @@
-/** CapabilityBanner: every disabled reason renders distinguishing copy.
- *
- *  Catch-the-regression test — if someone adds a new DisabledReason and
- *  forgets to extend the copy map, this fails loud at the per-reason case. */
+/** CapabilityBanner now covers only the top-level disabled cases (not-live,
+ *  no-agents-connected). Per-agent issues live in ConnectionBar's chips. */
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CapabilityBanner } from "../CapabilityBanner";
-import type { DisabledReason } from "../../lib/capability";
+import type { TopLevelDisabledReason } from "../../lib/capability";
 
-const REASONS: readonly DisabledReason[] = [
-  "no-agent",
-  "not-live",
-  "can-extension-missing",
-  "can-extension-stopped",
-  "no-ready-buses",
-];
+const REASONS: readonly TopLevelDisabledReason[] = ["not-live", "no-agents-connected"];
 
 describe("CapabilityBanner", () => {
-  it.each(REASONS)("renders distinct copy for reason %s", (reason) => {
-    render(
-      <CapabilityBanner
-        capability={{ kind: "disabled", reason }}
-        onSelectAgent={vi.fn()}
-        onRefresh={vi.fn()}
-      />,
-    );
-    // Every reason should mention the reason itself in the visible footer code chip.
+  it.each(REASONS)("renders distinct copy for top-level reason %s", (reason) => {
+    render(<CapabilityBanner reason={reason} onRefresh={vi.fn()} />);
+    // The reason chip in the footer should display the exact reason string.
     expect(screen.getByText(reason)).toBeInTheDocument();
   });
 
-  it("shows partialBuses detail when reason is no-ready-buses", () => {
-    render(
-      <CapabilityBanner
-        capability={{
-          kind: "disabled",
-          reason: "no-ready-buses",
-          partialBuses: [{ name: "busA", missing: ["send_raw", "send_message"] }],
-        }}
-        onSelectAgent={vi.fn()}
-        onRefresh={vi.fn()}
-      />,
-    );
-    expect(screen.getByText(/busA \(missing: send_raw, send_message\)/)).toBeInTheDocument();
+  it("not-live banner mentions the LIVE workspace requirement", () => {
+    render(<CapabilityBanner reason="not-live" onRefresh={vi.fn()} />);
+    expect(screen.getByText(/LIVE workspace/i)).toBeInTheDocument();
+  });
+
+  it("no-agents-connected banner mentions adding an agent", () => {
+    render(<CapabilityBanner reason="no-agents-connected" onRefresh={vi.fn()} />);
+    expect(screen.getByText(/No agents are reachable/i)).toBeInTheDocument();
   });
 });

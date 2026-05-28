@@ -1,21 +1,21 @@
-/** Composes `extensions.list` + `actions.list` into a single `CanTxCapability`
- *  driven by the pure resolver. Selected-agent + workspace mode come from the
- *  caller so the hook stays free of UI concerns. */
+/** Composes `extensions.list` + `actions.list` into a `CanTxDiscovery` driven
+ *  by the pure resolver. No selected-agent is passed in — discovery is
+ *  agent-set-wide; the UI picks which one to focus on after seeing the
+ *  full picture. */
 
 import type { BridgeTransport } from "@zeloscloud/app-extension-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { listActionsPerAgent, listExtensionsPerAgent } from "../lib/can-bridge";
-import { resolveCanTxCapability, type CanTxCapability } from "../lib/capability";
+import { discoverCanTx, type CanTxDiscovery } from "../lib/capability";
 
-export interface UseCanCapabilityInput {
+export interface UseCanDiscoveryInput {
   bridge: BridgeTransport | null;
   workspaceModeKind: "NONE" | "LIVE" | "TRACEPATH" | "TRACE";
-  selectedAgent: string | null;
 }
 
-export function useCanCapability(input: UseCanCapabilityInput): {
-  capability: CanTxCapability;
+export function useCanDiscovery(input: UseCanDiscoveryInput): {
+  discovery: CanTxDiscovery;
   isLoading: boolean;
   refetch: () => void;
 } {
@@ -37,19 +37,18 @@ export function useCanCapability(input: UseCanCapabilityInput): {
     refetchInterval: enabled ? 5000 : false,
   });
 
-  const capability = useMemo(
+  const discovery = useMemo(
     () =>
-      resolveCanTxCapability({
+      discoverCanTx({
         workspaceModeKind: input.workspaceModeKind,
-        selectedAgent: input.selectedAgent,
         extensionsByAgent: extensionsQuery.data ?? null,
         actionsByAgent: actionsQuery.data ?? null,
       }),
-    [input.workspaceModeKind, input.selectedAgent, extensionsQuery.data, actionsQuery.data],
+    [input.workspaceModeKind, extensionsQuery.data, actionsQuery.data],
   );
 
   return {
-    capability,
+    discovery,
     isLoading: extensionsQuery.isLoading || actionsQuery.isLoading,
     refetch: () => {
       void extensionsQuery.refetch();

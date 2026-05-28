@@ -1,5 +1,6 @@
-/** Orchestration shell. Owns the (agent, bus) selection and the busy/error
- *  state for in-flight mutations; everything else lives in `components/`. */
+/** Orchestration shell. Multi-agent discovery is automatic; the UI auto-focuses
+ *  the sole ready agent when there's only one and offers a picker for many.
+ *  No "connect agent" dance — every agent the desktop is talking to shows up. */
 
 import type { BridgeTransport } from "@zeloscloud/app-extension-sdk";
 import { useExtensionInfo, useZelosBridge } from "@zeloscloud/app-extension-sdk/react";
@@ -8,15 +9,14 @@ import { ActivePeriodicsTable } from "./components/ActivePeriodicsTable";
 import { CapabilityBanner } from "./components/CapabilityBanner";
 import { ConnectionBar } from "./components/ConnectionBar";
 import { RawComposer, type ParsedFrame } from "./components/RawComposer";
-import { useCanCapability } from "./hooks/use-capability";
+import { useCanDiscovery } from "./hooks/use-capability";
 import { useBusSnapshot } from "./hooks/use-tx-state";
 import { sendRaw, startPeriodicRaw, stopPeriodic } from "./lib/can-bridge";
-import type { CanTxCapability } from "./lib/capability";
+import { statusLabel, type AgentStatus, type ReadyBus } from "./lib/capability";
 
 export function App() {
   const bridge = useZelosBridge();
   const info = useExtensionInfo();
-  const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
 
   if (bridge.status === "loading") {
     return <CenteredMessage>Connecting to Zelos…</CenteredMessage>;
@@ -34,93 +34,141 @@ export function App() {
         </p>
       </header>
 
-      <CapabilityView
+      <DiscoveryView
         bridge={bridge.bridge}
         bridgeMode={bridge.mode}
         workspaceModeKind={bridge.workspace?.modeKind ?? "NONE"}
-        selectedAgent={selectedAgent}
-        onSelectAgent={setSelectedAgent}
       />
     </main>
   );
 }
 
-function CapabilityView({
+function DiscoveryView({
   bridge,
   bridgeMode,
   workspaceModeKind,
-  selectedAgent,
-  onSelectAgent,
 }: {
   bridge: BridgeTransport;
   bridgeMode: "embedded" | "standalone";
   workspaceModeKind: "NONE" | "LIVE" | "TRACEPATH" | "TRACE";
-  selectedAgent: string | null;
-  onSelectAgent: (agent: string) => void;
 }) {
-  const { capability, refetch } = useCanCapability({
-    bridge,
-    workspaceModeKind,
-    selectedAgent,
-  });
+  const { discovery, isLoading, refetch } = useCanDiscovery({ bridge, workspaceModeKind });
+  const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
+  const [selectedBus, setSelectedBus] = React.useState<string>("");
 
-  if (capability.kind === "disabled") {
-    return (
-      <CapabilityBanner
-        capability={capability}
-        onSelectAgent={onSelectAgent}
-        onRefresh={refetch}
-      />
-    );
+  // Auto-focus a ready agent when (a) nothing's selected yet or (b) the
+  // previously-selected agent disappeared or changed status. Default to the
+  // first ready one in the sorted-by-address list.
+  React.useEffect(() => {
+    if (discovery.kind !== "ready") return;
+    const ready = discovery.agents.filter((a) => a.kind === "ready");
+    if (ready.length === 0) {
+      if (selectedAgent !== null) setSelectedAgent(null);
+      return;
+    }
+    const current = ready.find((a) => a.agent === selectedAgent);
+    if (!current) {
+      setSelectedAgent(ready[0]?.agent ?? null);
+    }
+  }, [discovery, selectedAgent]);
+
+  // Compute the focused agent + its bus list before any conditional returns
+  // so the bus-selection effect runs on every render path (hooks rules).
+  const focusedAgent =
+    discovery.kind === "ready"
+      ? discovery.agents.find((a) => a.agent === selectedAgent) ?? null
+      : null;
+  const buses: readonly ReadyBus[] = React.useMemo(
+    () => (focusedAgent?.kind === "ready" ? focusedAgent.buses ?? [] : []),
+    [focusedAgent],
+  );
+
+  // Reset bus selection when the focused agent changes or its bus list shifts.
+  React.useEffect(() => {
+    if (!buses.some((b) => b.name === selectedBus)) {
+      setSelectedBus(buses[0]?.name ?? "");
+    }
+  }, [buses, selectedBus]);
+
+  if (discovery.kind === "disabled") {
+    return <CapabilityBanner reason={discovery.reason} onRefresh={refetch} />;
   }
 
-  return (
-    <ReadyView
-      capability={capability}
-      bridge={bridge}
-      bridgeMode={bridgeMode}
-      onRefresh={refetch}
-    />
-  );
-}
-
-function ReadyView({
-  capability,
-  bridge,
-  bridgeMode,
-  onRefresh,
-}: {
-  capability: Extract<CanTxCapability, { kind: "ready" }>;
-  bridge: BridgeTransport;
-  bridgeMode: "embedded" | "standalone";
-  onRefresh: () => void;
-}) {
-  // Auto-select the first ready bus; user can switch via ConnectionBar's picker.
-  const [selectedBus, setSelectedBus] = React.useState<string>(capability.buses[0]?.name ?? "");
-  React.useEffect(() => {
-    if (!capability.buses.some((b) => b.name === selectedBus)) {
-      setSelectedBus(capability.buses[0]?.name ?? "");
-    }
-  }, [capability.buses, selectedBus]);
+  if (isLoading && discovery.agents.length === 0) {
+    return <CenteredMessage>Discovering agents…</CenteredMessage>;
+  }
 
   return (
     <div className="space-y-4">
       <ConnectionBar
-        agent={capability.agent}
-        extensionVersion={capability.extension.version}
         bridgeMode={bridgeMode}
-        buses={capability.buses}
+        agents={discovery.agents}
+        selectedAgent={selectedAgent}
+        onSelectAgent={setSelectedAgent}
+        buses={buses}
         selectedBus={selectedBus}
         onSelectBus={setSelectedBus}
-        onRefresh={onRefresh}
+        onRefresh={refetch}
       />
 
-      {selectedBus ? (
-        <BusPanel bridge={bridge} agent={capability.agent} bus={selectedBus} />
+      {focusedAgent?.kind === "ready" && selectedBus ? (
+        <BusPanel bridge={bridge} agent={focusedAgent.agent} bus={selectedBus} />
+      ) : focusedAgent && focusedAgent.kind !== "ready" ? (
+        <AgentStatusDetail status={focusedAgent} />
       ) : (
-        <CenteredMessage>No bus selected.</CenteredMessage>
+        <NoReadyAgentsHint discovery={discovery} />
       )}
     </div>
+  );
+}
+
+function AgentStatusDetail({ status }: { status: AgentStatus }) {
+  return (
+    <section className="rounded-lg border border-border bg-card p-4 text-sm space-y-2">
+      <p>
+        <code>{status.agent}</code> · {statusLabel(status)}
+      </p>
+      {status.kind === "extension-missing" && (
+        <p className="text-xs text-muted-foreground">
+          Install the CAN extension from the marketplace, or run{" "}
+          <code className="rounded bg-background px-1.5 py-0.5">
+            zelos extensions install-local &lt;path-to-zelos-extension-can&gt;
+          </code>{" "}
+          and refresh.
+        </p>
+      )}
+      {status.kind === "extension-stopped" && (
+        <p className="text-xs text-muted-foreground">
+          Start the extension via the extensions panel or{" "}
+          <code className="rounded bg-background px-1.5 py-0.5">
+            zelos extensions start {status.extension?.id ?? "local.can"}
+          </code>
+          .
+        </p>
+      )}
+      {status.kind === "no-ready-buses" && status.partialBuses && status.partialBuses.length > 0 && (
+        <pre className="rounded bg-background p-3 text-xs whitespace-pre-wrap">
+          {status.partialBuses.map((b) => `${b.name} (missing: ${b.missing.join(", ")})`).join("\n")}
+        </pre>
+      )}
+    </section>
+  );
+}
+
+function NoReadyAgentsHint({
+  discovery,
+}: {
+  discovery: Extract<ReturnType<typeof useCanDiscovery>["discovery"], { kind: "ready" }>;
+}) {
+  const allMissing = discovery.agents.every((a) => a.kind === "extension-missing");
+  return (
+    <section className="rounded-lg border border-border bg-card p-4 text-sm space-y-2">
+      <p className="text-muted-foreground">
+        {allMissing
+          ? "None of the connected agents have the CAN extension installed."
+          : "No agent is ready for TX yet — click a chip above for status details."}
+      </p>
+    </section>
   );
 }
 
@@ -160,9 +208,7 @@ function BusPanel({
 
       <RawComposer
         busy={busy !== null}
-        onSendOnce={(p: ParsedFrame) =>
-          run("send", () => sendRaw(bridge, agent, bus, p))
-        }
+        onSendOnce={(p: ParsedFrame) => run("send", () => sendRaw(bridge, agent, bus, p))}
         onStartPeriodic={async (p) => {
           await run("start-periodic", () => startPeriodicRaw(bridge, agent, bus, p));
         }}
@@ -171,9 +217,7 @@ function BusPanel({
       <ActivePeriodicsTable
         periodics={periodics}
         busy={busy !== null}
-        onStop={(taskId) =>
-          run("stop", () => stopPeriodic(bridge, agent, bus, { task_id: taskId }))
-        }
+        onStop={(taskId) => run("stop", () => stopPeriodic(bridge, agent, bus, { task_id: taskId }))}
       />
     </div>
   );
@@ -224,3 +268,7 @@ function CenteredMessage({
     </div>
   );
 }
+
+// Re-export this so consumers (tests, etc.) don't need to know about the
+// inner type structure. Currently unused; keep for future component tests.
+export type { ReadyBus };
