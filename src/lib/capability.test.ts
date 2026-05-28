@@ -15,6 +15,13 @@ const runningCanExt: ExtensionEntry = {
   state: "running",
 };
 
+const localInstallCanExt: ExtensionEntry = {
+  id: "local.can",
+  name: "CAN",
+  version: "0.1.12",
+  state: "running",
+};
+
 const stoppedCanExt: ExtensionEntry = { ...runningCanExt, state: "stopped" };
 
 /** Build the full `can/<bus>/<method>` path set for the given buses. */
@@ -41,6 +48,16 @@ describe("resolveCanTxCapability", () => {
       expect(cap.extension).toBe(runningCanExt);
       expect(cap.buses.map((b) => b.name)).toEqual(["busA"]);
     }
+  });
+
+  it("recognizes a local-install ID (local.can) as the CAN extension", () => {
+    // `zelos extensions install-local ~/zelos-extension-can` registers under
+    // `local.can` (manifest name slug), not the marketplace-canonical id.
+    const cap = resolveCanTxCapability(
+      base({ extensionsByAgent: { "localhost:2300": [localInstallCanExt] } }),
+    );
+    expect(cap.kind).toBe("ready");
+    if (cap.kind === "ready") expect(cap.extension).toBe(localInstallCanExt);
   });
 
   it("returns ready with every bus that has its full method set", () => {

@@ -8,9 +8,23 @@
  *  signatures + return dicts use snake_case; the app's TS interfaces mirror
  *  that so the JSON round-trips without translation. */
 
-/** CAN agent extension ID this app pins to in the manifest `requires` block.
- *  The codec reports this same ID in `get_tx_state.extension.id`. */
+/** Marketplace-canonical CAN agent extension ID. The codec self-declares this
+ *  same value in `get_tx_state.extension.id` regardless of install method, and
+ *  the app's manifest `requires` block pins to it. */
 export const CAN_EXTENSION_ID = "zeloscloud.zelos-extension-can";
+
+/** Every install ID the agent might surface for the CAN extension.
+ *
+ *  `extensions.list` reports the INSTALL ID, which depends on how the user got
+ *  the extension onto the agent. Marketplace installs use the canonical id;
+ *  `zelos extensions install-local` prefixes `local.` and uses the manifest
+ *  `name` slug (so `name = "CAN"` → `local.can`). The capability resolver
+ *  treats any of these as "the CAN extension is present". */
+export const CAN_EXTENSION_INSTALL_IDS: ReadonlySet<string> = new Set([
+  CAN_EXTENSION_ID,
+  "local.can",
+  "local.zelos-extension-can",
+]);
 
 /** Bare method names exposed by the CAN extension. Each registered bus surfaces
  *  these as `can/<bus>/<method>` on the agent. Use {@link canActionPath} to

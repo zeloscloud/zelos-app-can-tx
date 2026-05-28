@@ -14,7 +14,7 @@ import type { ExtensionEntry } from "@zeloscloud/app-extension-sdk";
 
 import {
   canActionPath,
-  CAN_EXTENSION_ID,
+  CAN_EXTENSION_INSTALL_IDS,
   extractBusNames,
   REQUIRED_CAN_METHODS,
 } from "./types";
@@ -70,7 +70,9 @@ export function resolveCanTxCapability(input: ResolveCapabilityInputs): CanTxCap
     return { kind: "disabled", reason: "no-agent" };
   }
   const extensions = input.extensionsByAgent?.[agent] ?? [];
-  const canExt = extensions.find((e) => e.id === CAN_EXTENSION_ID);
+  // Match any known install ID (marketplace canonical OR `local.*` aliases the
+  // install-local CLI assigns). Different install methods, same extension.
+  const canExt = extensions.find((e) => CAN_EXTENSION_INSTALL_IDS.has(e.id));
   if (!canExt) {
     return { kind: "disabled", reason: "can-extension-missing", agent };
   }

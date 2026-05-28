@@ -10,7 +10,7 @@ const DISABLED_COPY: Record<DisabledReason, string> = {
   "no-agent": "Select an agent to enable CAN transmit.",
   "not-live": "CAN transmit requires a LIVE workspace. Switch to LIVE to continue.",
   "can-extension-missing":
-    "The Zelos CAN extension is not installed on this agent. Install it from the marketplace.",
+    "The Zelos CAN extension is not installed on this agent. Install it from the marketplace, or run `zelos extensions install-local <path-to-zelos-extension-can>` for a local build.",
   "can-extension-stopped":
     "The CAN extension is installed but not running. Start it from the extensions panel or `zelos extensions start zeloscloud.zelos-extension-can`.",
   "no-ready-buses":
