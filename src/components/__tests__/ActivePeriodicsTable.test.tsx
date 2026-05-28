@@ -6,15 +6,15 @@ import { ActivePeriodicsTable } from "../ActivePeriodicsTable";
 import type { CanPeriodicSlot } from "../../lib/types";
 
 const slot = (overrides: Partial<CanPeriodicSlot> = {}): CanPeriodicSlot => ({
-  taskId: "0x100:std:raw",
-  canId: 0x100,
-  isExtended: false,
-  isFd: false,
+  task_id: "0x100:std:raw",
+  can_id: 0x100,
+  is_extended: false,
+  is_fd: false,
   dlc: 4,
-  dataHex: "01020304",
-  periodMs: 100,
+  data_hex: "01020304",
+  period_ms: 100,
   mode: "raw",
-  isActive: true,
+  is_active: true,
   ...overrides,
 });
 
@@ -27,7 +27,15 @@ describe("ActivePeriodicsTable", () => {
   it("renders one row per periodic with task_id, hex CAN ID, and period", () => {
     render(
       <ActivePeriodicsTable
-        periodics={[slot({ taskId: "0x100:std:raw" }), slot({ taskId: "0x200:ext:raw", canId: 0x200, isExtended: true, periodMs: 500 })]}
+        periodics={[
+          slot({ task_id: "0x100:std:raw" }),
+          slot({
+            task_id: "0x200:ext:raw",
+            can_id: 0x200,
+            is_extended: true,
+            period_ms: 500,
+          }),
+        ]}
         busy={false}
         onStop={vi.fn()}
       />,
@@ -44,7 +52,7 @@ describe("ActivePeriodicsTable", () => {
     const onStop = vi.fn();
     render(
       <ActivePeriodicsTable
-        periodics={[slot({ taskId: "0x300:std:raw" })]}
+        periodics={[slot({ task_id: "0x300:std:raw" })]}
         busy={false}
         onStop={onStop}
       />,

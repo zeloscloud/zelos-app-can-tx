@@ -35,27 +35,27 @@ export function ActivePeriodicsTable({ periodics, busy, onStop }: ActivePeriodic
           </thead>
           <tbody>
             {periodics.map((p) => (
-              <tr key={p.taskId} className="border-b border-border/50 last:border-0">
+              <tr key={p.task_id} className="border-b border-border/50 last:border-0">
                 <Td>
-                  <code className="text-muted-foreground">{p.taskId}</code>
+                  <code className="text-muted-foreground">{p.task_id}</code>
                 </Td>
                 <Td>
                   <code>
-                    0x{p.canId.toString(16)}
-                    {p.isExtended ? " (ext)" : ""}
+                    0x{p.can_id.toString(16)}
+                    {p.is_extended ? " (ext)" : ""}
                   </code>
                 </Td>
                 <Td>{p.dlc}</Td>
                 <Td>
-                  <code className="text-muted-foreground">{p.dataHex || "—"}</code>
+                  <code className="text-muted-foreground">{p.data_hex || "—"}</code>
                 </Td>
-                <Td>{p.periodMs} ms</Td>
+                <Td>{p.period_ms} ms</Td>
                 <Td>{p.mode}</Td>
                 <Td>
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => void onStop(p.taskId)}
+                    onClick={() => void onStop(p.task_id)}
                     className="rounded border border-border px-2 py-0.5 hover:bg-background disabled:opacity-50"
                   >
                     Stop

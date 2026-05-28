@@ -8,7 +8,12 @@
  *
  *  Each call addresses a single (agent, bus) pair. Paths land as
  *  `can/<bus>/<method>`; the bus is implicit in the codec instance on the
- *  agent side so action params don't carry a `bus` field. */
+ *  agent side so action params don't carry a `bus` field.
+ *
+ *  Only the methods the v1 raw-TX flow needs are exposed here. DBC-encoded
+ *  wrappers (`send_message`, `start_periodic_message`) and the DBC catalog
+ *  reader (`list_messages`) are exercised via raw `actions.execute` for now
+ *  and will get typed wrappers when the DBC composer lands. */
 
 import { actions, extensions, type BridgeTransport, type ExtensionEntry } from "@zeloscloud/app-extension-sdk";
 
@@ -17,10 +22,7 @@ import {
   CAN_METHODS,
   type CanActionResult,
   type CanBusSnapshot,
-  type DbcCatalog,
-  type SendMessageParams,
   type SendRawParams,
-  type StartPeriodicMessageParams,
   type StartPeriodicRawParams,
   type StartPeriodicResult,
   type StopPeriodicParams,
@@ -41,20 +43,6 @@ export async function getBusSnapshot(bridge: BridgeTransport, agent: string, bus
   const res = await actions.execute<CanBusSnapshot>(bridge, {
     agent,
     action: canActionPath(bus, CAN_METHODS.getTxState),
-  });
-  ensurePass(res);
-  return res.result;
-}
-
-/** Read the DBC catalog the CAN extension already has loaded for a bus.
- *  The app never parses or selects DBCs itself — the bus's DBC is fixed by
- *  the agent extension's config, and this app composes against whatever is
- *  loaded. That rules out encode mismatch between what the app thinks the
- *  bus uses and what the extension actually encodes with. */
-export async function listMessages(bridge: BridgeTransport, agent: string, bus: string): Promise<DbcCatalog> {
-  const res = await actions.execute<DbcCatalog>(bridge, {
-    agent,
-    action: canActionPath(bus, CAN_METHODS.listMessages),
   });
   ensurePass(res);
   return res.result;
@@ -83,35 +71,6 @@ export async function startPeriodicRaw(
   const res = await actions.execute<StartPeriodicResult>(bridge, {
     agent,
     action: canActionPath(bus, CAN_METHODS.startPeriodicRaw),
-    params,
-  });
-  ensurePass(res);
-  return res.result;
-}
-
-export async function sendMessage(
-  bridge: BridgeTransport,
-  agent: string,
-  bus: string,
-  params: SendMessageParams,
-): Promise<void> {
-  const res = await actions.execute(bridge, {
-    agent,
-    action: canActionPath(bus, CAN_METHODS.sendMessage),
-    params,
-  });
-  ensurePass(res);
-}
-
-export async function startPeriodicMessage(
-  bridge: BridgeTransport,
-  agent: string,
-  bus: string,
-  params: StartPeriodicMessageParams,
-): Promise<StartPeriodicResult> {
-  const res = await actions.execute<StartPeriodicResult>(bridge, {
-    agent,
-    action: canActionPath(bus, CAN_METHODS.startPeriodicMessage),
     params,
   });
   ensurePass(res);

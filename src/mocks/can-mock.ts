@@ -9,7 +9,8 @@
  *
  *  Action paths land as `can/<bus>/<method>` to match the real agent — each
  *  simulated bus surfaces the full method set as separate paths in
- *  `actions.list`. */
+ *  `actions.list`. All wire fields are snake_case (mirroring the Python
+ *  codec's idiom). */
 
 import type { MockBridge } from "@zeloscloud/app-extension-sdk";
 
@@ -23,7 +24,6 @@ import {
   type CanPeriodicSlot,
   type DbcCatalog,
   type SendRawParams,
-  type StartPeriodicMessageParams,
   type StartPeriodicRawParams,
   type StopPeriodicParams,
 } from "../lib/types";
@@ -55,30 +55,37 @@ interface SimAgent {
   buses: Map<string, SimBus>;
 }
 
+interface MockDbcParams {
+  message: string;
+  signals_json: string;
+  period_ms: number;
+  mux?: string;
+}
+
 const DEMO_DBC: DbcCatalog = {
   bus: "demo",
-  dbcName: "demo.dbc",
+  dbc_name: "demo.dbc",
   messages: [
     {
       name: "VehicleStatus",
-      canId: 0x100,
-      isExtended: false,
+      can_id: 0x100,
+      is_extended: false,
       dlc: 8,
-      cycleTimeMs: 100,
+      cycle_time_ms: 100,
       signals: [
-        { name: "Speed", startBit: 0, length: 16, byteOrder: "little", isSigned: false, scale: 0.01, offset: 0, unit: "km/h" },
-        { name: "Gear", startBit: 16, length: 4, byteOrder: "little", isSigned: false, scale: 1, offset: 0, valueTable: { "0": "P", "1": "R", "2": "N", "3": "D" } },
+        { name: "Speed", start_bit: 0, length: 16, byte_order: "little", is_signed: false, scale: 0.01, offset: 0, unit: "km/h" },
+        { name: "Gear", start_bit: 16, length: 4, byte_order: "little", is_signed: false, scale: 1, offset: 0, value_table: { "0": "P", "1": "R", "2": "N", "3": "D" } },
       ],
     },
     {
       name: "BatteryState",
-      canId: 0x200,
-      isExtended: false,
+      can_id: 0x200,
+      is_extended: false,
       dlc: 8,
-      cycleTimeMs: 500,
+      cycle_time_ms: 500,
       signals: [
-        { name: "SoC", startBit: 0, length: 8, byteOrder: "little", isSigned: false, scale: 1, offset: 0, unit: "%" },
-        { name: "VoltagePack", startBit: 8, length: 16, byteOrder: "little", isSigned: false, scale: 0.1, offset: 0, unit: "V" },
+        { name: "SoC", start_bit: 0, length: 8, byte_order: "little", is_signed: false, scale: 1, offset: 0, unit: "%" },
+        { name: "VoltagePack", start_bit: 8, length: 16, byte_order: "little", is_signed: false, scale: 0.1, offset: 0, unit: "V" },
       ],
     },
   ],
@@ -90,8 +97,14 @@ function buildBus(name: string): SimBus {
       name,
       interface: "virtual",
       status: "active",
-      dbc: { name: "demo.dbc", messageCount: DEMO_DBC.messages.length },
-      metrics: { txErrors: 0, txOverflows: 0, messagesReceived: 0, messagesDecoded: 0, unknownMessages: 0 },
+      dbc: { name: "demo.dbc", message_count: DEMO_DBC.messages.length },
+      metrics: {
+        tx_errors: 0,
+        tx_overflows: 0,
+        messages_received: 0,
+        messages_decoded: 0,
+        unknown_messages: 0,
+      },
       periodics: [],
     },
     periodics: new Map(),
@@ -131,7 +144,7 @@ function buildAgent(address: string, scenario: MockScenario): SimAgent {
 
 function snapshot(agent: SimAgent, bus: SimBus): CanBusSnapshot {
   return {
-    capturedAtUnixMs: Date.now(),
+    captured_at_unix_ms: Date.now(),
     extension: { id: CAN_EXTENSION_ID, version: "0.1.12", state: agent.extState },
     bus: { ...bus.state, periodics: [...bus.periodics.values()] },
   };
@@ -243,7 +256,7 @@ async function handleActionExecute(agentMap: Map<string, SimAgent>, params: unkn
     case CAN_METHODS.startPeriodicMessage:
       return {
         status: "pass",
-        result: startPeriodicMessageSim(bus, actionParams as StartPeriodicMessageParams),
+        result: startPeriodicMessageSim(bus, actionParams as MockDbcParams),
       };
     case CAN_METHODS.stopPeriodic:
       return { status: "pass", result: stopPeriodicSim(bus, actionParams as StopPeriodicParams) };
@@ -253,52 +266,52 @@ async function handleActionExecute(agentMap: Map<string, SimAgent>, params: unkn
 }
 
 function sendRawSim(params: SendRawParams) {
-  const id = parseCanIdHex(params.canId);
+  const id = parseCanIdHex(params.can_id);
   const { hex, dlc } = normalizeDataHex(params.data);
-  return { canId: id.value, canIdHex: id.hex, dlc, dataHex: hex };
+  return { can_id: id.value, can_id_hex: id.hex, dlc, data_hex: hex };
 }
 
 function startPeriodicRawSim(bus: SimBus, params: StartPeriodicRawParams) {
-  const id = parseCanIdHex(params.canId);
+  const id = parseCanIdHex(params.can_id);
   const { hex, dlc } = normalizeDataHex(params.data);
-  const taskId = taskIdFor(id.hex, params.isExtended ?? false, "raw");
-  const replaced = bus.periodics.has(taskId);
-  bus.periodics.set(taskId, {
-    taskId,
-    canId: id.value,
-    isExtended: params.isExtended ?? false,
-    isFd: params.isFd ?? false,
+  const task_id = taskIdFor(id.hex, params.is_extended ?? false, "raw");
+  const replaced = bus.periodics.has(task_id);
+  bus.periodics.set(task_id, {
+    task_id,
+    can_id: id.value,
+    is_extended: params.is_extended ?? false,
+    is_fd: params.is_fd ?? false,
     dlc,
-    dataHex: hex,
-    periodMs: params.periodMs,
+    data_hex: hex,
+    period_ms: params.period_ms,
     mode: "raw",
-    isActive: true,
+    is_active: true,
   });
-  return { task_id: taskId, replaced };
+  return { task_id, replaced };
 }
 
-function startPeriodicMessageSim(bus: SimBus, params: StartPeriodicMessageParams) {
+function startPeriodicMessageSim(bus: SimBus, params: MockDbcParams) {
   const msg = DEMO_DBC.messages.find((m) => m.name === params.message);
   if (!msg) throw new Error(`mock-host: unknown DBC message "${params.message}"`);
   const mux = params.mux ?? null;
-  const taskId = taskIdFor(`0x${msg.canId.toString(16)}`, msg.isExtended, mux ?? "dbc");
-  const replaced = bus.periodics.has(taskId);
-  bus.periodics.set(taskId, {
-    taskId,
-    canId: msg.canId,
-    isExtended: msg.isExtended,
-    isFd: false,
+  const task_id = taskIdFor(`0x${msg.can_id.toString(16)}`, msg.is_extended, mux ?? "dbc");
+  const replaced = bus.periodics.has(task_id);
+  bus.periodics.set(task_id, {
+    task_id,
+    can_id: msg.can_id,
+    is_extended: msg.is_extended,
+    is_fd: false,
     dlc: msg.dlc,
-    dataHex: "".padStart(msg.dlc * 2, "0"),
-    periodMs: params.periodMs,
+    data_hex: "".padStart(msg.dlc * 2, "0"),
+    period_ms: params.period_ms,
     mode: "dbc",
-    isActive: true,
-    message: { name: msg.name, mux, signals: params.signals },
+    is_active: true,
+    message: { name: msg.name, mux, signals: JSON.parse(params.signals_json) as Record<string, unknown> },
   });
-  return { task_id: taskId, replaced };
+  return { task_id, replaced };
 }
 
 function stopPeriodicSim(bus: SimBus, params: StopPeriodicParams) {
-  const existed = bus.periodics.delete(params.taskId);
-  return { task_id: params.taskId, stopped: existed };
+  const existed = bus.periodics.delete(params.task_id);
+  return { task_id: params.task_id, stopped: existed };
 }

@@ -172,7 +172,7 @@ function BusPanel({
         periodics={periodics}
         busy={busy !== null}
         onStop={(taskId) =>
-          run("stop", () => stopPeriodic(bridge, agent, bus, { taskId }))
+          run("stop", () => stopPeriodic(bridge, agent, bus, { task_id: taskId }))
         }
       />
     </div>
@@ -186,22 +186,15 @@ function BusStatusCard({
 }: {
   busy: string | null;
   error: string | null;
-  busState:
-    | {
-        name: string;
-        interface: string;
-        status: string;
-        metrics?: { txErrors?: number; messagesReceived?: number };
-      }
-    | undefined;
+  busState: import("./lib/types").CanBusState | undefined;
 }) {
   return (
     <section className="rounded-lg border border-border bg-card p-4 text-xs space-y-1">
       {busState ? (
         <p>
           <strong>{busState.name}</strong> ({busState.interface}) · status {busState.status} ·
-          tx_errors: {busState.metrics?.txErrors ?? 0} · rx:{" "}
-          {busState.metrics?.messagesReceived ?? 0}
+          tx_errors: {busState.metrics?.tx_errors ?? 0} · rx:{" "}
+          {busState.metrics?.messages_received ?? 0}
         </p>
       ) : (
         <p className="text-muted-foreground">Loading snapshot…</p>

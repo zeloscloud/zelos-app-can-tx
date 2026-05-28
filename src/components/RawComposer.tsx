@@ -10,14 +10,16 @@ export interface RawComposerProps {
   /** Disable inputs + buttons while a parent-coordinated mutation is in flight. */
   busy: boolean;
   onSendOnce: (params: ParsedFrame) => Promise<void> | void;
-  onStartPeriodic: (params: ParsedFrame & { periodMs: number }) => Promise<void> | void;
+  onStartPeriodic: (params: ParsedFrame & { period_ms: number }) => Promise<void> | void;
 }
 
+/** Wire-shaped output (snake_case) so callers can pass it straight to the
+ *  agent's `send_raw` / `start_periodic_raw` action without translation. */
 export interface ParsedFrame {
-  canId: string;
+  can_id: string;
   data: string;
-  isExtended: boolean;
-  isFd: boolean;
+  is_extended: boolean;
+  is_fd: boolean;
 }
 
 /** Hex with optional `0x` prefix and optional whitespace separators. */
@@ -38,12 +40,18 @@ export function RawComposer({ busy, onSendOnce, onStartPeriodic }: RawComposerPr
 
   function sendOnce() {
     if (formError) return;
-    void onSendOnce({ canId, data, isExtended, isFd });
+    void onSendOnce({ can_id: canId, data, is_extended: isExtended, is_fd: isFd });
   }
 
   function startPeriodic() {
     if (formError) return;
-    void onStartPeriodic({ canId, data, isExtended, isFd, periodMs });
+    void onStartPeriodic({
+      can_id: canId,
+      data,
+      is_extended: isExtended,
+      is_fd: isFd,
+      period_ms: periodMs,
+    });
   }
 
   return (

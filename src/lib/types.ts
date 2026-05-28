@@ -2,10 +2,14 @@
  *
  *  Kept hand-maintained — the agent extension does not yet emit ts-rs bindings
  *  for these shapes. Until it does, the app fixtures and the agent serializer
- *  must stay in lock-step here. */
+ *  must stay in lock-step here.
+ *
+ *  Field naming follows the wire: snake_case. The codec's Python action
+ *  signatures + return dicts use snake_case; the app's TS interfaces mirror
+ *  that so the JSON round-trips without translation. */
 
 /** CAN agent extension ID this app pins to in the manifest `requires` block.
- *  The agent reports this same ID in `get_tx_state.extension.id`. */
+ *  The codec reports this same ID in `get_tx_state.extension.id`. */
 export const CAN_EXTENSION_ID = "zeloscloud.zelos-extension-can";
 
 /** Bare method names exposed by the CAN extension. Each registered bus surfaces
@@ -52,39 +56,39 @@ export function extractBusNames(actionPaths: readonly string[]): string[] {
   return [...buses].sort();
 }
 
-// ─── Bus snapshot shapes ────────────────────────────────────────────────────
+// ─── Bus snapshot shapes (wire = snake_case) ────────────────────────────────
 
 export interface CanBusMetrics {
-  txErrors?: number;
-  txOverflows?: number;
-  messagesReceived?: number;
-  messagesDecoded?: number;
-  unknownMessages?: number;
+  tx_errors?: number;
+  tx_overflows?: number;
+  messages_received?: number;
+  messages_decoded?: number;
+  unknown_messages?: number;
 }
 
 export interface CanBusDbcMetadata {
   path?: string;
   name?: string;
   hash?: string;
-  messageCount?: number;
+  message_count?: number;
 }
 
 export interface CanPeriodicSlot {
-  taskId: string;
-  canId: number;
-  isExtended: boolean;
-  isFd: boolean;
+  task_id: string;
+  can_id: number;
+  is_extended: boolean;
+  is_fd: boolean;
   dlc: number;
-  dataHex: string;
-  periodMs: number;
+  data_hex: string;
+  period_ms: number;
   mode: "raw" | "dbc";
-  isActive: boolean;
+  is_active: boolean;
   message?: {
     name: string;
     mux?: number | string | null;
     signals?: Record<string, unknown>;
   };
-  lastError?: string | null;
+  last_error?: string | null;
 }
 
 export interface CanBusState {
@@ -95,13 +99,13 @@ export interface CanBusState {
   dbc?: CanBusDbcMetadata;
   metrics?: CanBusMetrics;
   periodics: CanPeriodicSlot[];
-  lastError?: string | null;
+  last_error?: string | null;
 }
 
 /** What `can/<bus>/get_tx_state` returns. One bus per call; the app composes
  *  cross-bus snapshots itself if it wants a multi-bus view. */
 export interface CanBusSnapshot {
-  capturedAtUnixMs: number;
+  captured_at_unix_ms: number;
   extension: {
     id: string;
     version: string;
@@ -114,32 +118,32 @@ export interface CanBusSnapshot {
 
 export interface DbcSignal {
   name: string;
-  startBit: number;
+  start_bit: number;
   length: number;
-  byteOrder: "little" | "big";
-  isSigned: boolean;
+  byte_order: "little" | "big";
+  is_signed: boolean;
   scale: number;
   offset: number;
   min?: number;
   max?: number;
   unit?: string;
-  valueTable?: Record<string, string>;
-  muxIndicator?: boolean;
-  muxValue?: number | null;
+  value_table?: Record<string, string>;
+  mux_indicator?: boolean;
+  mux_value?: number | null;
 }
 
 export interface DbcMessage {
   name: string;
-  canId: number;
-  isExtended: boolean;
+  can_id: number;
+  is_extended: boolean;
   dlc: number;
-  cycleTimeMs?: number;
+  cycle_time_ms?: number;
   signals: DbcSignal[];
 }
 
 export interface DbcCatalog {
   bus: string;
-  dbcName?: string;
+  dbc_name?: string;
   messages: DbcMessage[];
 }
 
@@ -152,32 +156,22 @@ export interface CanActionResult<T = unknown> {
 
 export interface SendRawParams {
   /** Hex string, with or without `0x`. */
-  canId: string;
+  can_id: string;
   /** Hex bytes; spaces optional. */
   data: string;
-  isExtended?: boolean;
-  isFd?: boolean;
+  is_extended?: boolean;
+  is_fd?: boolean;
 }
 
 export interface StartPeriodicRawParams extends SendRawParams {
-  periodMs: number;
-}
-
-export interface SendMessageParams {
-  message: string;
-  mux?: number | string | null;
-  signals: Record<string, unknown>;
-}
-
-export interface StartPeriodicMessageParams extends SendMessageParams {
-  periodMs: number;
+  period_ms: number;
 }
 
 export interface StopPeriodicParams {
-  taskId: string;
+  task_id: string;
 }
 
 export interface StartPeriodicResult {
-  taskId: string;
+  task_id: string;
   replaced: boolean;
 }

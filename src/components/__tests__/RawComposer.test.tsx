@@ -64,10 +64,10 @@ describe("RawComposer form", () => {
 
     expect(onSendOnce).toHaveBeenCalledTimes(1);
     expect(onSendOnce).toHaveBeenCalledWith({
-      canId: "0x100",
+      can_id: "0x100",
       data: "01 02 03 04",
-      isExtended: false,
-      isFd: false,
+      is_extended: false,
+      is_fd: false,
     });
     expect(onStartPeriodic).not.toHaveBeenCalled();
   });
