@@ -13,6 +13,7 @@ import { useCanDiscovery } from "./hooks/use-capability";
 import { useBusSnapshot } from "./hooks/use-tx-state";
 import { sendRaw, startPeriodicRaw, stopPeriodic } from "./lib/can-bridge";
 import type { AgentStatus, ReadyBus } from "./lib/capability";
+import { copyToClipboard } from "./lib/clipboard";
 import type { CanBusState } from "./lib/types";
 
 export function App() {
@@ -93,11 +94,15 @@ function DiscoveryView({
     [focusedAgent],
   );
 
+  // Only depend on `buses` — when buses change we want to re-validate the
+  // selection; when the user picks a new bus directly we don't need to
+  // re-run this guard since user picks are always within the current list.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     if (!buses.some((b) => b.name === selectedBus)) {
       setSelectedBus(buses[0]?.name ?? "");
     }
-  }, [buses, selectedBus]);
+  }, [buses]);
 
   // Snapshot for the focused (agent, bus). Lifted here so the Copy-logs
   // handler can include the snapshot data + any query error in its dump.
@@ -143,16 +148,12 @@ function DiscoveryView({
       lastAction: { inFlight: busy, error: actionError },
     };
     const text = JSON.stringify(log, null, 2);
-    // Always log to devtools so the user has a fallback path if the
-    // clipboard call rejects (some iframe sandboxes block it).
+    // Always log to devtools as a backstop in case the clipboard write
+    // fails for any reason (sandbox permission, focus, etc.).
     // biome-ignore lint/suspicious/noConsole: deliberate user-facing escape hatch
     console.log("[CAN-TX debug log]\n" + text);
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopyToast("Copied to clipboard");
-    } catch {
-      setCopyToast("Clipboard blocked — see devtools console");
-    }
+    const ok = await copyToClipboard(text);
+    setCopyToast(ok ? "Copied to clipboard" : "Clipboard blocked — see devtools console");
     window.setTimeout(() => setCopyToast(null), 2500);
   }, [
     appId,

@@ -97,9 +97,25 @@ export async function stopPeriodic(
 
 function ensurePass(res: CanActionResult): void {
   if (res.status === "pass" || res.status === "done") return;
-  const reason =
-    res.result != null && typeof res.result === "object" && "reason" in res.result
-      ? String((res.result as { reason: unknown }).reason)
-      : null;
-  throw new Error(`CAN action failed: status=${res.status}${reason ? `, reason=${reason}` : ""}`);
+  // Pull whatever detail we can off `result` — agents emit different
+  // shapes (a `{reason}` object, a raw string, or just the error dict).
+  // Falling back to JSON.stringify keeps the surface useful when the
+  // shape is unfamiliar so bug reports include the actual failure.
+  let detail: string | null = null;
+  if (res.result != null && typeof res.result === "object") {
+    if ("reason" in res.result) {
+      detail = String((res.result as { reason: unknown }).reason);
+    } else if ("error" in res.result) {
+      detail = String((res.result as { error: unknown }).error);
+    } else {
+      try {
+        detail = JSON.stringify(res.result);
+      } catch {
+        // ignore
+      }
+    }
+  } else if (typeof res.result === "string" && res.result.length > 0) {
+    detail = res.result;
+  }
+  throw new Error(`CAN action failed: status=${res.status}${detail ? `, ${detail}` : ""}`);
 }
