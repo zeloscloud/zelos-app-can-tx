@@ -22,7 +22,10 @@ import {
   CAN_METHODS,
   type CanActionResult,
   type CanBusSnapshot,
+  type DbcCatalog,
+  type SendMessageParams,
   type SendRawParams,
+  type StartPeriodicMessageParams,
   type StartPeriodicRawParams,
   type StartPeriodicResult,
   type StopPeriodicParams,
@@ -93,6 +96,49 @@ export async function stopPeriodic(
     params,
   });
   ensurePass(res);
+}
+
+export async function listMessages(
+  bridge: BridgeTransport,
+  agent: string,
+  bus: string,
+): Promise<DbcCatalog> {
+  const res = await actions.execute<DbcCatalog>(bridge, {
+    agent,
+    action: canActionPath(bus, CAN_METHODS.listMessages),
+    params: {},
+  });
+  ensurePass(res);
+  return res.result;
+}
+
+export async function sendMessage(
+  bridge: BridgeTransport,
+  agent: string,
+  bus: string,
+  params: SendMessageParams,
+): Promise<void> {
+  const res = await actions.execute(bridge, {
+    agent,
+    action: canActionPath(bus, CAN_METHODS.sendMessage),
+    params,
+  });
+  ensurePass(res);
+}
+
+export async function startPeriodicMessage(
+  bridge: BridgeTransport,
+  agent: string,
+  bus: string,
+  params: StartPeriodicMessageParams,
+): Promise<StartPeriodicResult> {
+  const res = await actions.execute<StartPeriodicResult>(bridge, {
+    agent,
+    action: canActionPath(bus, CAN_METHODS.startPeriodicMessage),
+    params,
+  });
+  ensurePass(res);
+  return res.result;
 }
 
 function ensurePass(res: CanActionResult): void {

@@ -189,3 +189,16 @@ export interface StartPeriodicResult {
   task_id: string;
   replaced: boolean;
 }
+
+/** DBC message-encoded send. `signals_json` is a JSON-stringified
+ *  `Record<signal_name, value>` — the wire format the codec expects. */
+export interface SendMessageParams {
+  message: string;
+  signals_json: string;
+  /** Empty string when not multiplexed; integer or label string otherwise. */
+  mux?: string;
+}
+
+export interface StartPeriodicMessageParams extends SendMessageParams {
+  period_ms: number;
+}

@@ -7,7 +7,7 @@ import React from "react";
 
 import { AgentsCard } from "@/components/AgentsCard";
 import { CapabilityBanner } from "@/components/CapabilityBanner";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { TransmitCard } from "@/components/TransmitCard";
 import { useCanDiscovery } from "@/hooks/use-capability";
 import { copyToClipboard } from "@/lib/clipboard";
 
@@ -92,31 +92,8 @@ function DiscoveryView({
         toast={copyToast}
       />
 
-      <TransmitPlaceholder />
+      <TransmitCard bridge={bridge} agents={discovery.agents} />
     </div>
-  );
-}
-
-function TransmitPlaceholder() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Transmit</CardTitle>
-        <CardDescription>
-          Shared list of transmit messages across all ready agents and buses. Coming in the next
-          commit — for now use the per-bus action surface directly via the CLI:
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <pre className="rounded bg-muted p-3 text-xs whitespace-pre-wrap">
-{`zelos actions execute can/<bus>/send_raw \\
-  --params '{"can_id":"0x100","data":"01 02"}'
-
-zelos actions execute can/<bus>/start_periodic_raw \\
-  --params '{"can_id":"0x200","data":"aa bb","period_ms":100}'`}
-        </pre>
-      </CardContent>
-    </Card>
   );
 }
 
