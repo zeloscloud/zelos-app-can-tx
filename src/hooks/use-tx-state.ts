@@ -1,13 +1,15 @@
 /** TanStack Query hook for the per-bus `get_tx_state` snapshot.
  *
- *  Refetch every 2 s while the bus has at least one active periodic, disabled
- *  otherwise. No bespoke cache layer — TanStack Query already dedupes
- *  concurrent queries via `staleTime` and `gcTime`. */
+ *  Polls at 1 Hz unconditionally so the bus-stats card stays live even when
+ *  no periodics are active — RX counters tick up from agent-side decoding,
+ *  not from anything the app does. */
 
 import type { BridgeTransport } from "@zeloscloud/app-extension-sdk";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { getBusSnapshot } from "../lib/can-bridge";
 import type { CanBusSnapshot } from "../lib/types";
+
+const SNAPSHOT_POLL_MS = 1_000;
 
 export function useBusSnapshot(
   bridge: BridgeTransport | null,
@@ -21,11 +23,8 @@ export function useBusSnapshot(
       return await getBusSnapshot(bridge, agent, bus);
     },
     enabled: bridge !== null && agent !== null && bus !== null,
-    staleTime: 1000,
-    refetchInterval: (query) => {
-      const snap = query.state.data;
-      return snap?.bus.periodics.length ? 2000 : false;
-    },
+    staleTime: SNAPSHOT_POLL_MS,
+    refetchInterval: SNAPSHOT_POLL_MS,
     refetchOnWindowFocus: true,
   });
 }
