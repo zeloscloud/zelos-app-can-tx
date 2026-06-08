@@ -3,6 +3,7 @@ import { useZelosBridge, ZelosBridgeProvider } from "@zeloscloud/app-extension-s
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { Toaster } from "sonner";
 import { App } from "./App";
 import "./index.css";
 import { installCanMockHost, type MockScenario } from "./mocks/can-mock";
@@ -54,6 +55,7 @@ ReactDOM.createRoot(rootElement).render(
       <QueryClientProvider client={queryClient}>
         <MockHostBootstrap scenario={scenario} />
         <App />
+        <Toaster position="bottom-right" theme="dark" richColors closeButton />
       </QueryClientProvider>
     </ZelosBridgeProvider>
   </React.StrictMode>,

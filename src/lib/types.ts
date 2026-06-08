@@ -32,6 +32,7 @@ export const CAN_EXTENSION_INSTALL_IDS: ReadonlySet<string> = new Set([
 export const CAN_METHODS = {
   getTxState: "get_tx_state",
   listMessages: "list_messages",
+  describeMessage: "describe_message",
   sendRaw: "send_raw",
   startPeriodicRaw: "start_periodic_raw",
   sendMessage: "send_message",
@@ -146,19 +147,36 @@ export interface DbcSignal {
   mux_value?: number | null;
 }
 
-export interface DbcMessage {
+/** Lightweight identifier-only shape returned by `list_messages` — used to
+ *  populate the message picker without pulling per-signal metadata across
+ *  the wire. Picking a message fires `describe_message` for the full detail. */
+export interface DbcMessageSummary {
   name: string;
   can_id: number;
   is_extended: boolean;
   dlc: number;
   cycle_time_ms?: number;
+}
+
+/** Full per-message detail returned by `describe_message` — extends the
+ *  summary with the signal array. */
+export interface DbcMessage extends DbcMessageSummary {
   signals: DbcSignal[];
 }
 
 export interface DbcCatalog {
   bus: string;
   dbc_name?: string;
-  messages: DbcMessage[];
+  messages: DbcMessageSummary[];
+}
+
+/** Response shape for `describe_message` — one message wrapped with the bus
+ *  + dbc identifier so the webapp can sanity-check the response against the
+ *  request context. */
+export interface DbcMessageDescription {
+  bus: string;
+  dbc_name?: string;
+  message: DbcMessage;
 }
 
 // ─── Action parameter + result shapes ───────────────────────────────────────

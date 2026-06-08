@@ -22,7 +22,7 @@ import {
   type CanBusSnapshot,
   type CanBusState,
   type CanPeriodicSlot,
-  type DbcCatalog,
+  type DbcMessage,
   type SendRawParams,
   type StartPeriodicRawParams,
   type StopPeriodicParams,
@@ -62,8 +62,9 @@ interface MockDbcParams {
   mux?: string;
 }
 
-const DEMO_DBC: DbcCatalog = {
-  bus: "demo",
+// Internal full-detail catalog. The mock serves the summary subset from
+// list_messages and the full DbcMessage from describe_message.
+const DEMO_DBC: { dbc_name: string; messages: DbcMessage[] } = {
   dbc_name: "demo.dbc",
   messages: [
     {
@@ -97,7 +98,7 @@ function buildBus(name: string): SimBus {
       name,
       interface: "virtual",
       status: "active",
-      dbc: { name: "demo.dbc", message_count: DEMO_DBC.messages.length },
+      dbc: { name: "demo.dbc", hash: "mock-demo-dbc-v1", message_count: DEMO_DBC.messages.length },
       metrics: {
         tx_errors: 0,
         tx_overflows: 0,
@@ -181,6 +182,10 @@ export function installCanMockHost(bridge: MockBridge, opts: MockHostOptions = {
     switch (method) {
       case "extensions.list":
         return buildExtensionsList(agentMap);
+      case "extensions.start":
+        return handleExtensionLifecycle(agentMap, params, "start");
+      case "extensions.stop":
+        return handleExtensionLifecycle(agentMap, params, "stop");
       case "actions.list":
         return buildActionsList(agentMap);
       case "actions.execute":
@@ -191,6 +196,34 @@ export function installCanMockHost(bridge: MockBridge, opts: MockHostOptions = {
   });
 
   return () => bridge.setInvokeHandler(null);
+}
+
+function handleExtensionLifecycle(
+  agentMap: Map<string, SimAgent>,
+  params: unknown,
+  op: "start" | "stop",
+) {
+  if (params === null || typeof params !== "object") {
+    throw new Error(`mock-host: ${op} requires { id, agent? }`);
+  }
+  const { id, agent: agentAddr } = params as { id?: unknown; agent?: unknown };
+  if (typeof id !== "string" || id.length === 0) {
+    throw new Error(`mock-host: ${op} requires non-empty string id`);
+  }
+  const addr = typeof agentAddr === "string" && agentAddr.length > 0 ? agentAddr : "localhost:2300";
+  const agent = agentMap.get(addr);
+  if (!agent) throw new Error(`mock-host: unknown agent "${addr}"`);
+  if (!agent.extInstalled) {
+    throw new Error(`mock-host: extension "${id}" not installed on "${addr}"`);
+  }
+  if (op === "start") {
+    agent.extState = "running";
+    agent.exposesActions = agent.buses.size > 0;
+    return { pid: 4321 };
+  }
+  agent.extState = "stopped";
+  agent.exposesActions = false;
+  return undefined;
 }
 
 function buildExtensionsList(agentMap: Map<string, SimAgent>) {
@@ -243,7 +276,35 @@ async function handleActionExecute(agentMap: Map<string, SimAgent>, params: unkn
     case CAN_METHODS.getTxState:
       return { status: "pass", result: snapshot(agent, bus) };
     case CAN_METHODS.listMessages:
-      return { status: "pass", result: { ...DEMO_DBC, bus: busName } };
+      return {
+        status: "pass",
+        result: {
+          bus: busName,
+          dbc_name: DEMO_DBC.dbc_name,
+          // Strip signals — list_messages is the lightweight summary call.
+          messages: DEMO_DBC.messages.map((m) => ({
+            name: m.name,
+            can_id: m.can_id,
+            is_extended: m.is_extended,
+            dlc: m.dlc,
+            ...(m.cycle_time_ms != null && { cycle_time_ms: m.cycle_time_ms }),
+          })),
+        },
+      };
+    case CAN_METHODS.describeMessage: {
+      const name = (actionParams as { message?: string } | undefined)?.message;
+      const msg = DEMO_DBC.messages.find((m) => m.name === name);
+      if (!msg) {
+        return {
+          status: "fail",
+          result: { reason: `mock-host: unknown DBC message "${name}"` },
+        };
+      }
+      return {
+        status: "pass",
+        result: { bus: busName, dbc_name: DEMO_DBC.dbc_name, message: msg },
+      };
+    }
     case CAN_METHODS.sendRaw:
       return { status: "pass", result: sendRawSim(actionParams as SendRawParams) };
     case CAN_METHODS.startPeriodicRaw:

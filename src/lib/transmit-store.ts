@@ -33,6 +33,19 @@ export interface TransmitRow {
   /** Empty string when not multiplexed; integer or label otherwise. */
   mux?: string;
   signals?: Record<string, unknown>;
+  /** Captured from the DBC catalog at dialog save time so the table can
+   *  render ID / DLC without re-querying the catalog per row. */
+  dbc_can_id?: number;
+  dbc_dlc?: number;
+  /** Per-signal value tables (signal_name → { "0": "INIT", ... }), captured
+   *  at compose time so the transmit table's Data cell can render the
+   *  human-readable label next to the raw int without a per-row describe
+   *  round-trip. Only signals that actually have a value table appear here. */
+  dbc_value_tables?: Record<string, Record<string, string>>;
+  /** Name of the multiplexer indicator signal on this message (when the
+   *  message is multiplexed). Captured so the row-display can render the
+   *  mux value with its value-table label via dbc_value_tables. */
+  dbc_mux_signal?: string;
 
   // ─── Server-link state ───────────────────────────────────────────────
   /** task_id returned by the last start_periodic_* call. Lets us derive

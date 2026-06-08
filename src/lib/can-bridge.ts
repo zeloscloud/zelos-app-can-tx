@@ -23,6 +23,7 @@ import {
   type CanActionResult,
   type CanBusSnapshot,
   type DbcCatalog,
+  type DbcMessageDescription,
   type SendMessageParams,
   type SendRawParams,
   type StartPeriodicMessageParams,
@@ -107,6 +108,21 @@ export async function listMessages(
     agent,
     action: canActionPath(bus, CAN_METHODS.listMessages),
     params: {},
+  });
+  ensurePass(res);
+  return res.result;
+}
+
+export async function describeMessage(
+  bridge: BridgeTransport,
+  agent: string,
+  bus: string,
+  message: string,
+): Promise<DbcMessageDescription> {
+  const res = await actions.execute<DbcMessageDescription>(bridge, {
+    agent,
+    action: canActionPath(bus, CAN_METHODS.describeMessage),
+    params: { message },
   });
   ensurePass(res);
   return res.result;

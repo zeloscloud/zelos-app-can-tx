@@ -3,7 +3,7 @@ version = "0.1.0"
 description = "Transmit CAN frames (raw + DBC, one-shot + periodic) through the Zelos CAN agent extension."
 author = "Zelos"
 repository = "https://github.com/zeloscloud/zelos-app-can-tx"
-icon = "assets/icon.svg"
+icon = "assets/icon.png"
 readme = "README.md"
 
 # Compatibility — pinned to the host that ships the actions.* + extensions.list bridge surface.
