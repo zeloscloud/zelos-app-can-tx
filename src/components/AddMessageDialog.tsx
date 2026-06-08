@@ -746,11 +746,6 @@ function fieldDerivedRange(
   return { min: Math.min(a, b), max: Math.max(a, b) };
 }
 
-/** Click-to-open combobox with substring filtering over message name + hex id.
- *
- *  Built on Radix Popover, which knows how to coexist with Radix Dialog —
- *  click/focus inside the popover are not treated as "outside the dialog",
- *  so the dialog stays open and the focus trap doesn't yank focus back. */
 /** Number input + adjacent value-table dropdown trigger that share the same
  *  underlying string value. Always typeable; the dropdown is a searchable
  *  popover of labeled entries that, when picked, fill the input. No mode
