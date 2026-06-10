@@ -6,9 +6,10 @@ repository = "https://github.com/zeloscloud/zelos-app-can-tx"
 icon = "assets/icon.png"
 readme = "README.md"
 
-# Compatibility — pinned to the host that ships the actions.* + extensions.list bridge surface.
+# Compatibility — pinned to the host that ships the actions.* / extensions.list bridge surface
+# AND the extensions.start/stop server side (the latter lands in 26.0.5).
 [zelos]
-version = ">=26.0.3"
+version = ">=26.0.5"
 
 [host]
 type = "app"
