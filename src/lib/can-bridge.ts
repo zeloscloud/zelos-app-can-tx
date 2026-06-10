@@ -6,16 +6,12 @@
  *  intentionally thin — no caching, no retries, no debouncing. Let TanStack
  *  Query own those.
  *
- *  Each call addresses a single (agent, bus) pair. Paths land as
- *  `can/<bus>/<method>`; the bus is implicit in the codec instance on the
- *  agent side so action params don't carry a `bus` field.
- *
- *  Only the methods the v1 raw-TX flow needs are exposed here. DBC-encoded
- *  wrappers (`send_message`, `start_periodic_message`) and the DBC catalog
- *  reader (`list_messages`) are exercised via raw `actions.execute` for now
- *  and will get typed wrappers when the DBC composer lands. */
+ *  Wire model: the CAN extension exposes a single global action namespace
+ *  (`can/get_tx_state`, `can/send_message`, …). Every per-bus action carries
+ *  a `codec` parameter naming the target bus. Bus discovery is via
+ *  {@link listCodecs}. */
 
-import { actions, extensions, type BridgeTransport, type ExtensionEntry } from "@zeloscloud/app-extension-sdk";
+import { actions, type BridgeTransport } from "@zeloscloud/app-extension-sdk";
 
 import {
   canActionPath,
@@ -32,25 +28,23 @@ import {
   type StopPeriodicParams,
 } from "./types";
 
-/** Per-agent action discovery — used by the capability resolver to figure out
- *  which buses are present (every bus surfaces `can/<bus>/get_tx_state`). */
-export async function listActionsPerAgent(bridge: BridgeTransport): Promise<Record<string, string[]>> {
-  return await actions.list(bridge);
+/** Names of every CAN bus the extension currently has running on the named
+ *  agent. The capability resolver consumes this to enumerate ready buses. */
+export async function listCodecs(bridge: BridgeTransport, agent: string): Promise<{ codecs: string[] }> {
+  const res = await actions.execute<{ codecs: string[] }>(bridge, {
+    agent,
+    action: canActionPath(CAN_METHODS.listCodecs),
+    params: {},
+  });
+  ensurePass(res);
+  return res.result;
 }
 
-/** Per-agent installed-extension discovery. */
-export async function listExtensionsPerAgent(bridge: BridgeTransport): Promise<Record<string, ExtensionEntry[]>> {
-  return await extensions.list(bridge);
-}
-
-export async function getBusSnapshot(bridge: BridgeTransport, agent: string, bus: string): Promise<CanBusSnapshot> {
+export async function getBusSnapshot(bridge: BridgeTransport, agent: string, codec: string): Promise<CanBusSnapshot> {
   const res = await actions.execute<CanBusSnapshot>(bridge, {
     agent,
-    action: canActionPath(bus, CAN_METHODS.getTxState),
-    // Always send a JSON object on the wire, even for no-arg actions. NAPI
-    // marshals `undefined` to a null and some action runtimes reject that;
-    // explicit `{}` is the safe shape.
-    params: {},
+    action: canActionPath(CAN_METHODS.getTxState),
+    params: { codec },
   });
   ensurePass(res);
   return res.result;
@@ -59,13 +53,13 @@ export async function getBusSnapshot(bridge: BridgeTransport, agent: string, bus
 export async function sendRaw(
   bridge: BridgeTransport,
   agent: string,
-  bus: string,
+  codec: string,
   params: SendRawParams,
 ): Promise<void> {
   const res = await actions.execute(bridge, {
     agent,
-    action: canActionPath(bus, CAN_METHODS.sendRaw),
-    params,
+    action: canActionPath(CAN_METHODS.sendRaw),
+    params: { codec, ...params },
   });
   ensurePass(res);
 }
@@ -73,13 +67,13 @@ export async function sendRaw(
 export async function startPeriodicRaw(
   bridge: BridgeTransport,
   agent: string,
-  bus: string,
+  codec: string,
   params: StartPeriodicRawParams,
 ): Promise<StartPeriodicResult> {
   const res = await actions.execute<StartPeriodicResult>(bridge, {
     agent,
-    action: canActionPath(bus, CAN_METHODS.startPeriodicRaw),
-    params,
+    action: canActionPath(CAN_METHODS.startPeriodicRaw),
+    params: { codec, ...params },
   });
   ensurePass(res);
   return res.result;
@@ -88,13 +82,13 @@ export async function startPeriodicRaw(
 export async function stopPeriodic(
   bridge: BridgeTransport,
   agent: string,
-  bus: string,
+  codec: string,
   params: StopPeriodicParams,
 ): Promise<void> {
   const res = await actions.execute(bridge, {
     agent,
-    action: canActionPath(bus, CAN_METHODS.stopPeriodic),
-    params,
+    action: canActionPath(CAN_METHODS.stopPeriodic),
+    params: { codec, ...params },
   });
   ensurePass(res);
 }
@@ -102,12 +96,12 @@ export async function stopPeriodic(
 export async function listMessages(
   bridge: BridgeTransport,
   agent: string,
-  bus: string,
+  codec: string,
 ): Promise<DbcCatalog> {
   const res = await actions.execute<DbcCatalog>(bridge, {
     agent,
-    action: canActionPath(bus, CAN_METHODS.listMessages),
-    params: {},
+    action: canActionPath(CAN_METHODS.listMessages),
+    params: { codec },
   });
   ensurePass(res);
   return res.result;
@@ -116,13 +110,13 @@ export async function listMessages(
 export async function describeMessage(
   bridge: BridgeTransport,
   agent: string,
-  bus: string,
+  codec: string,
   message: string,
 ): Promise<DbcMessageDescription> {
   const res = await actions.execute<DbcMessageDescription>(bridge, {
     agent,
-    action: canActionPath(bus, CAN_METHODS.describeMessage),
-    params: { message },
+    action: canActionPath(CAN_METHODS.describeMessage),
+    params: { codec, message },
   });
   ensurePass(res);
   return res.result;
@@ -131,13 +125,13 @@ export async function describeMessage(
 export async function sendMessage(
   bridge: BridgeTransport,
   agent: string,
-  bus: string,
+  codec: string,
   params: SendMessageParams,
 ): Promise<void> {
   const res = await actions.execute(bridge, {
     agent,
-    action: canActionPath(bus, CAN_METHODS.sendMessage),
-    params,
+    action: canActionPath(CAN_METHODS.sendMessage),
+    params: { codec, ...params },
   });
   ensurePass(res);
 }
@@ -145,13 +139,13 @@ export async function sendMessage(
 export async function startPeriodicMessage(
   bridge: BridgeTransport,
   agent: string,
-  bus: string,
+  codec: string,
   params: StartPeriodicMessageParams,
 ): Promise<StartPeriodicResult> {
   const res = await actions.execute<StartPeriodicResult>(bridge, {
     agent,
-    action: canActionPath(bus, CAN_METHODS.startPeriodicMessage),
-    params,
+    action: canActionPath(CAN_METHODS.startPeriodicMessage),
+    params: { codec, ...params },
   });
   ensurePass(res);
   return res.result;

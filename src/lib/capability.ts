@@ -1,33 +1,35 @@
 /** CAN-TX discovery + per-agent capability — pure functions. No React, no IO.
  *
- *  Discovery is dynamic: every agent the desktop is currently talking to shows
- *  up in `extensions.list` / `actions.list` fan-out keys. For each one we
- *  compute a status (`ready` / `extension-missing` / `extension-stopped` /
- *  `no-ready-buses`) so the UI can render the full agent picture, not just a
- *  single user-picked agent.
+ *  Discovery model:
+ *  1. `extensions.list` tells us which agents have the CAN extension
+ *     installed and what its run state is.
+ *  2. `actions.list` tells us which `can/<method>` paths are registered
+ *     (every running CAN extension should expose the full REQUIRED_CAN_METHODS
+ *     set under a single global namespace).
+ *  3. `can/list_codecs` (one call per agent, after #1 and #2 confirm the
+ *     extension is up) returns the names of the buses currently configured.
+ *     Each codec name is a "ready bus" by definition — there's no per-bus
+ *     readiness state anymore, because the action set is global.
  *
  *  Top-level disabled cases are only the things that aren't per-agent:
  *  workspace not LIVE, or zero agents reachable at all. */
 
 import type { ExtensionEntry } from "@zeloscloud/app-extension-sdk";
 
-import {
-  canActionPath,
-  CAN_EXTENSION_INSTALL_IDS,
-  extractBusNames,
-  REQUIRED_CAN_METHODS,
-} from "./types";
+import { canActionPath, CAN_EXTENSION_INSTALL_IDS, REQUIRED_CAN_METHODS } from "./types";
 
 export type AgentStatusKind =
   | "ready"
   | "extension-missing"
   | "extension-stopped"
-  | "no-ready-buses";
+  | "no-ready-buses"
+  /** Extension is up + actions registered, but the discovery RPC hasn't
+   *  resolved yet. The UI renders a placeholder header while this loads. */
+  | "discovering-codecs";
 
 export interface ReadyBus {
+  /** Codec name — the value passed as `codec` to per-bus actions. */
   name: string;
-  /** Methods available as `can/<name>/<method>` paths on the agent. */
-  methods: readonly string[];
 }
 
 export interface AgentStatus {
@@ -37,8 +39,9 @@ export interface AgentStatus {
   extension?: ExtensionEntry;
   /** Present only when `kind === "ready"`. */
   buses?: readonly ReadyBus[];
-  /** Present only when `kind === "no-ready-buses"`. */
-  partialBuses?: ReadonlyArray<{ name: string; missing: readonly string[] }>;
+  /** Present only when `kind === "no-ready-buses"` and we know the action
+   *  surface itself is missing methods (vs. having zero codecs configured). */
+  missingMethods?: readonly string[];
 }
 
 export type TopLevelDisabledReason = "not-live" | "no-agents-connected";
@@ -54,6 +57,10 @@ export interface DiscoverInputs {
   extensionsByAgent: Record<string, ExtensionEntry[]> | null;
   /** Action paths per agent from `actions.list` (fan-out). */
   actionsByAgent: Record<string, string[]> | null;
+  /** Codec names per agent from `can/list_codecs` (one call per agent the
+   *  capability resolver is willing to query — see hook for the gating logic).
+   *  `undefined` means "not yet fetched"; `[]` means "fetched, zero codecs". */
+  codecsByAgent: Record<string, string[] | undefined> | null;
 }
 
 /** Top-level discovery: builds the agent list + status, or returns a disabled
@@ -77,6 +84,7 @@ export function discoverCanTx(input: DiscoverInputs): CanTxDiscovery {
       agent,
       input.extensionsByAgent?.[agent] ?? [],
       input.actionsByAgent?.[agent] ?? [],
+      input.codecsByAgent?.[agent],
     ),
   );
   return { kind: "ready", agents };
@@ -87,6 +95,9 @@ export function resolveAgentStatus(
   agent: string,
   extensions: readonly ExtensionEntry[],
   actionPaths: readonly string[],
+  /** Names returned by `can/list_codecs` on this agent, or `undefined` if the
+   *  RPC hasn't completed yet. */
+  codecs: readonly string[] | undefined,
 ): AgentStatus {
   // Match any known install ID (marketplace canonical OR `local.*` aliases the
   // install-local CLI assigns). Different install methods, same extension.
@@ -98,25 +109,32 @@ export function resolveAgentStatus(
     return { agent, kind: "extension-stopped", extension: ext };
   }
 
+  // Confirm every required action path is registered. A missing action path
+  // here means the extension is the wrong version (or didn't finish
+  // registering), not that buses are misconfigured.
   const actionSet = new Set(actionPaths);
-  const allBusNames = extractBusNames(actionPaths);
-  const ready: ReadyBus[] = [];
-  const partial: Array<{ name: string; missing: string[] }> = [];
-  for (const busName of allBusNames) {
-    const methods: string[] = [];
-    const missing: string[] = [];
-    for (const method of REQUIRED_CAN_METHODS) {
-      if (actionSet.has(canActionPath(busName, method))) methods.push(method);
-      else missing.push(method);
-    }
-    if (missing.length === 0) ready.push({ name: busName, methods });
-    else partial.push({ name: busName, missing });
+  const missing: string[] = [];
+  for (const method of REQUIRED_CAN_METHODS) {
+    if (!actionSet.has(canActionPath(method))) missing.push(method);
+  }
+  if (missing.length > 0) {
+    return { agent, kind: "no-ready-buses", extension: ext, missingMethods: missing };
   }
 
-  if (ready.length === 0) {
-    return { agent, kind: "no-ready-buses", extension: ext, partialBuses: partial };
+  // Action set is good. Now we need the codec list.
+  if (codecs === undefined) {
+    return { agent, kind: "discovering-codecs", extension: ext };
   }
-  return { agent, kind: "ready", extension: ext, buses: ready };
+  if (codecs.length === 0) {
+    return { agent, kind: "no-ready-buses", extension: ext };
+  }
+
+  return {
+    agent,
+    kind: "ready",
+    extension: ext,
+    buses: codecs.map((name) => ({ name })),
+  };
 }
 
 /** Short text label for the agent's status, used in chips + tooltips. */
@@ -129,6 +147,10 @@ export function statusLabel(status: AgentStatus): string {
     case "extension-stopped":
       return `CAN extension ${status.extension?.state ?? "stopped"}`;
     case "no-ready-buses":
-      return "no usable buses";
+      return status.missingMethods?.length
+        ? `missing actions: ${status.missingMethods.join(", ")}`
+        : "no buses configured";
+    case "discovering-codecs":
+      return "discovering buses…";
   }
 }

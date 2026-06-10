@@ -26,10 +26,14 @@ export const CAN_EXTENSION_INSTALL_IDS: ReadonlySet<string> = new Set([
   "local.zelos-extension-can",
 ]);
 
-/** Bare method names exposed by the CAN extension. Each registered bus surfaces
- *  these as `can/<bus>/<method>` on the agent. Use {@link canActionPath} to
- *  build a full path. */
+/** Bare method names exposed by the CAN extension. The on-wire surface is a
+ *  single global namespace: every method is `can/<method>` and takes a
+ *  `codec` parameter (the bus name) to select which bus to operate on.
+ *  Per-bus actions (`can/<bus>/<method>`) are NOT used — see ARCHITECTURE
+ *  note in this file for the rationale. Use {@link canActionPath} to build
+ *  a full path. */
 export const CAN_METHODS = {
+  listCodecs: "list_codecs",
   getTxState: "get_tx_state",
   listMessages: "list_messages",
   describeMessage: "describe_message",
@@ -42,10 +46,16 @@ export const CAN_METHODS = {
 
 export type CanMethodName = (typeof CAN_METHODS)[keyof typeof CAN_METHODS];
 
-/** Method names every CAN bus must register before the app considers it ready. */
+/** Action paths every running CAN extension is expected to surface before the
+ *  app considers it ready. `list_codecs` is the discovery action; the rest
+ *  are operations the UI depends on. `describe_message` is included so the
+ *  Add-message dialog isn't fooled by an extension that ships `list_messages`
+ *  without it. */
 export const REQUIRED_CAN_METHODS: readonly CanMethodName[] = [
+  CAN_METHODS.listCodecs,
   CAN_METHODS.getTxState,
   CAN_METHODS.listMessages,
+  CAN_METHODS.describeMessage,
   CAN_METHODS.sendRaw,
   CAN_METHODS.startPeriodicRaw,
   CAN_METHODS.sendMessage,
@@ -53,23 +63,13 @@ export const REQUIRED_CAN_METHODS: readonly CanMethodName[] = [
   CAN_METHODS.stopPeriodic,
 ];
 
-/** Build the full action path for a given bus + method. */
-export function canActionPath(bus: string, method: CanMethodName | string): string {
-  return `can/${bus}/${method}`;
+/** Build the full action path for a given method. */
+export function canActionPath(method: CanMethodName | string): string {
+  return `can/${method}`;
 }
 
-/** Pattern matching `can/<bus>/<method>`. Capture group 1 is the bus name. */
-export const CAN_ACTION_PATH_RE = /^can\/([^/]+)\/[^/]+$/;
-
-/** Extract the unique set of bus names from a list of action paths. */
-export function extractBusNames(actionPaths: readonly string[]): string[] {
-  const buses = new Set<string>();
-  for (const path of actionPaths) {
-    const match = CAN_ACTION_PATH_RE.exec(path);
-    if (match?.[1]) buses.add(match[1]);
-  }
-  return [...buses].sort();
-}
+// `can/list_codecs` returns `{ codecs: string[] }` — defined inline in
+// can-bridge.ts since it has a single caller.
 
 // ─── Bus snapshot shapes (wire = snake_case) ────────────────────────────────
 
@@ -117,15 +117,15 @@ export interface CanBusState {
   last_error?: string | null;
 }
 
-/** What `can/<bus>/get_tx_state` returns. One bus per call; the app composes
- *  cross-bus snapshots itself if it wants a multi-bus view. */
+/** What `can/get_tx_state` returns (one snapshot per `codec` selector). The
+ *  app composes cross-bus snapshots itself if it wants a multi-bus view.
+ *
+ *  Extension id/version/state are intentionally NOT in this shape — that
+ *  info is canonical at the `extensions.list` bridge surface, consumed by
+ *  the capability resolver. Don't re-add it here; the 1 Hz snapshot poll
+ *  shouldn't be doubling as a discovery channel. */
 export interface CanBusSnapshot {
   captured_at_unix_ms: number;
-  extension: {
-    id: string;
-    version: string;
-    state: "installed" | "running" | "stopped" | "failed" | string;
-  };
   bus: CanBusState;
 }
 

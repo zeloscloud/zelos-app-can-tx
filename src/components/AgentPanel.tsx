@@ -90,17 +90,18 @@ export function AgentPanel({
           </p>
         )}
 
-        {agent.kind === "no-ready-buses" && agent.partialBuses && agent.partialBuses.length > 0 && (
+        {agent.kind === "no-ready-buses" && agent.missingMethods && agent.missingMethods.length > 0 && (
           <pre className="rounded bg-muted p-3 text-xs whitespace-pre-wrap">
-            {agent.partialBuses
-              .map((b) => `${b.name} (missing: ${b.missing.join(", ")})`)
-              .join("\n")}
+            {`Extension is running but missing required actions:\n  ${agent.missingMethods.join("\n  ")}`}
           </pre>
         )}
-        {agent.kind === "no-ready-buses" && (!agent.partialBuses || agent.partialBuses.length === 0) && (
+        {agent.kind === "no-ready-buses" && (!agent.missingMethods || agent.missingMethods.length === 0) && (
           <p className="text-xs text-muted-foreground">
             The extension is running but no buses are configured. Check the extension's bus list.
           </p>
+        )}
+        {agent.kind === "discovering-codecs" && (
+          <p className="text-xs text-muted-foreground">Discovering buses…</p>
         )}
       </CardHeader>
 

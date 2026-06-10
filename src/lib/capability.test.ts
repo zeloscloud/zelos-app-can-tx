@@ -26,15 +26,17 @@ const localInstallCanExt: ExtensionEntry = {
 
 const stoppedCanExt: ExtensionEntry = { ...runningCanExt, state: "stopped" };
 
-function pathsForBuses(...buses: string[]): string[] {
-  return buses.flatMap((bus) => REQUIRED_CAN_METHODS.map((m) => canActionPath(bus, m)));
+/** The full set of action paths a healthy CAN extension registers. */
+function allRequiredActionPaths(): string[] {
+  return REQUIRED_CAN_METHODS.map((m) => canActionPath(m));
 }
 
 function baseDiscoveryInput(overrides: Partial<DiscoverInputs> = {}): DiscoverInputs {
   return {
     workspaceModeKind: "LIVE",
     extensionsByAgent: { "localhost:2300": [runningCanExt] },
-    actionsByAgent: { "localhost:2300": pathsForBuses("busA") },
+    actionsByAgent: { "localhost:2300": allRequiredActionPaths() },
+    codecsByAgent: { "localhost:2300": ["busA"] },
     ...overrides,
   };
 }
@@ -42,8 +44,13 @@ function baseDiscoveryInput(overrides: Partial<DiscoverInputs> = {}): DiscoverIn
 // ─── Per-agent resolver ─────────────────────────────────────────────────────
 
 describe("resolveAgentStatus", () => {
-  it("returns ready when extension is running and at least one bus has the full method set", () => {
-    const status = resolveAgentStatus("localhost:2300", [runningCanExt], pathsForBuses("busA"));
+  it("returns ready when extension is running, actions are registered, and list_codecs reports at least one bus", () => {
+    const status = resolveAgentStatus(
+      "localhost:2300",
+      [runningCanExt],
+      allRequiredActionPaths(),
+      ["busA"],
+    );
     expect(status.kind).toBe("ready");
     if (status.kind === "ready") {
       expect(status.extension).toBe(runningCanExt);
@@ -52,45 +59,75 @@ describe("resolveAgentStatus", () => {
   });
 
   it("recognizes a local-install ID (local.can) as the CAN extension", () => {
-    const status = resolveAgentStatus("localhost:2300", [localInstallCanExt], pathsForBuses("busA"));
+    const status = resolveAgentStatus(
+      "localhost:2300",
+      [localInstallCanExt],
+      allRequiredActionPaths(),
+      ["busA"],
+    );
     expect(status.kind).toBe("ready");
     if (status.kind === "ready") expect(status.extension).toBe(localInstallCanExt);
   });
 
   it("returns extension-missing when no CAN extension is installed", () => {
-    expect(resolveAgentStatus("a:1", [], [])).toEqual({ agent: "a:1", kind: "extension-missing" });
+    expect(resolveAgentStatus("a:1", [], [], undefined)).toEqual({
+      agent: "a:1",
+      kind: "extension-missing",
+    });
   });
 
   it("returns extension-stopped when the CAN extension exists but is not running", () => {
-    const status = resolveAgentStatus("a:1", [stoppedCanExt], []);
-    expect(status).toMatchObject({ agent: "a:1", kind: "extension-stopped", extension: stoppedCanExt });
+    const status = resolveAgentStatus("a:1", [stoppedCanExt], [], undefined);
+    expect(status).toMatchObject({
+      agent: "a:1",
+      kind: "extension-stopped",
+      extension: stoppedCanExt,
+    });
   });
 
-  it("returns no-ready-buses with partialBuses detail when a bus is missing methods", () => {
+  it("returns no-ready-buses with missingMethods detail when required actions are missing", () => {
     const incomplete = [
-      canActionPath("busA", "get_tx_state"),
-      canActionPath("busA", "list_messages"),
+      canActionPath("get_tx_state"),
+      canActionPath("list_messages"),
     ];
-    const status = resolveAgentStatus("a:1", [runningCanExt], incomplete);
+    const status = resolveAgentStatus("a:1", [runningCanExt], incomplete, undefined);
     expect(status.kind).toBe("no-ready-buses");
     if (status.kind === "no-ready-buses") {
-      expect(status.partialBuses).toEqual([
-        {
-          name: "busA",
-          missing: REQUIRED_CAN_METHODS.filter(
-            (m) => m !== "get_tx_state" && m !== "list_messages",
-          ),
-        },
-      ]);
+      expect(status.missingMethods).toEqual(
+        REQUIRED_CAN_METHODS.filter((m) => m !== "get_tx_state" && m !== "list_messages"),
+      );
     }
   });
 
-  it("returns no-ready-buses with empty partialBuses when no CAN actions are visible at all", () => {
-    const status = resolveAgentStatus("a:1", [runningCanExt], []);
-    expect(status).toMatchObject({
-      kind: "no-ready-buses",
-      partialBuses: [],
-    });
+  it("returns discovering-codecs when extension + actions are healthy but list_codecs hasn't resolved", () => {
+    const status = resolveAgentStatus(
+      "a:1",
+      [runningCanExt],
+      allRequiredActionPaths(),
+      undefined,
+    );
+    expect(status.kind).toBe("discovering-codecs");
+  });
+
+  it("returns no-ready-buses (no missingMethods) when list_codecs resolves to zero codecs", () => {
+    const status = resolveAgentStatus("a:1", [runningCanExt], allRequiredActionPaths(), []);
+    expect(status.kind).toBe("no-ready-buses");
+    if (status.kind === "no-ready-buses") {
+      expect(status.missingMethods).toBeUndefined();
+    }
+  });
+
+  it("returns multiple ready buses when list_codecs reports more than one codec", () => {
+    const status = resolveAgentStatus(
+      "a:1",
+      [runningCanExt],
+      allRequiredActionPaths(),
+      ["busA", "busB"],
+    );
+    expect(status.kind).toBe("ready");
+    if (status.kind === "ready") {
+      expect(status.buses?.map((b) => b.name)).toEqual(["busA", "busB"]);
+    }
   });
 });
 
@@ -111,12 +148,13 @@ describe("discoverCanTx", () => {
       baseDiscoveryInput({
         extensionsByAgent: {
           "localhost:2300": [runningCanExt],
-          "remote:2300": [], // extension missing on remote
-        },
-        actionsByAgent: {
-          "localhost:2300": pathsForBuses("busA"),
           "remote:2300": [],
         },
+        actionsByAgent: {
+          "localhost:2300": allRequiredActionPaths(),
+          "remote:2300": [],
+        },
+        codecsByAgent: { "localhost:2300": ["busA"] },
       }),
     );
     expect(disc.kind).toBe("ready");
@@ -129,11 +167,11 @@ describe("discoverCanTx", () => {
   });
 
   it("unions agent keys across both fan-outs (either source can be first)", () => {
-    // Only extensions has remote:2300; only actions has alt:2300.
     const disc = discoverCanTx(
       baseDiscoveryInput({
         extensionsByAgent: { "localhost:2300": [runningCanExt], "remote:2300": [stoppedCanExt] },
-        actionsByAgent: { "localhost:2300": pathsForBuses("busA"), "alt:2300": [] },
+        actionsByAgent: { "localhost:2300": allRequiredActionPaths(), "alt:2300": [] },
+        codecsByAgent: { "localhost:2300": ["busA"] },
       }),
     );
     expect(disc.kind).toBe("ready");
@@ -151,14 +189,18 @@ describe("discoverCanTx", () => {
 
   it("disabled: no-agents-connected when no agents are present in either fan-out", () => {
     const disc = discoverCanTx(
-      baseDiscoveryInput({ extensionsByAgent: {}, actionsByAgent: {} }),
+      baseDiscoveryInput({ extensionsByAgent: {}, actionsByAgent: {}, codecsByAgent: {} }),
     );
     expect(disc).toEqual({ kind: "disabled", reason: "no-agents-connected" });
   });
 
   it("treats null fan-outs as in-flight (no agents yet, so no-agents-connected)", () => {
     const disc = discoverCanTx(
-      baseDiscoveryInput({ extensionsByAgent: null, actionsByAgent: null }),
+      baseDiscoveryInput({
+        extensionsByAgent: null,
+        actionsByAgent: null,
+        codecsByAgent: null,
+      }),
     );
     expect(disc).toEqual({ kind: "disabled", reason: "no-agents-connected" });
   });
@@ -168,17 +210,14 @@ describe("discoverCanTx", () => {
 
 describe("statusLabel", () => {
   it("renders bus count for ready agents", () => {
-    expect(statusLabel({ agent: "a", kind: "ready", buses: [{ name: "b1", methods: [] }] })).toBe(
+    expect(statusLabel({ agent: "a", kind: "ready", buses: [{ name: "b1" }] })).toBe(
       "ready (1 bus)",
     );
     expect(
       statusLabel({
         agent: "a",
         kind: "ready",
-        buses: [
-          { name: "b1", methods: [] },
-          { name: "b2", methods: [] },
-        ],
+        buses: [{ name: "b1" }, { name: "b2" }],
       }),
     ).toBe("ready (2 buses)");
   });
@@ -190,6 +229,14 @@ describe("statusLabel", () => {
     expect(statusLabel({ agent: "a", kind: "extension-stopped", extension: stoppedCanExt })).toBe(
       "CAN extension stopped",
     );
-    expect(statusLabel({ agent: "a", kind: "no-ready-buses" })).toBe("no usable buses");
+    expect(statusLabel({ agent: "a", kind: "no-ready-buses" })).toBe("no buses configured");
+    expect(
+      statusLabel({
+        agent: "a",
+        kind: "no-ready-buses",
+        missingMethods: ["send_message"],
+      }),
+    ).toBe("missing actions: send_message");
+    expect(statusLabel({ agent: "a", kind: "discovering-codecs" })).toBe("discovering buses…");
   });
 });

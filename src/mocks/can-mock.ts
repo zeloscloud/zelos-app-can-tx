@@ -7,15 +7,14 @@
  *  - Mock standalone mode can render all capability states (?mock=<scenario>)
  *  - A mock raw send/start/stop flow completes with no desktop app.
  *
- *  Action paths land as `can/<bus>/<method>` to match the real agent — each
- *  simulated bus surfaces the full method set as separate paths in
- *  `actions.list`. All wire fields are snake_case (mirroring the Python
- *  codec's idiom). */
+ *  Action paths land as `can/<method>` to match the real agent — a single
+ *  global namespace, with the bus selected by the `codec` parameter on each
+ *  call. Bus discovery goes through `can/list_codecs`. All wire fields are
+ *  snake_case (mirroring the Python codec's idiom). */
 
 import type { MockBridge } from "@zeloscloud/app-extension-sdk";
 
 import {
-  CAN_ACTION_PATH_RE,
   CAN_EXTENSION_ID,
   CAN_METHODS,
   REQUIRED_CAN_METHODS,
@@ -143,10 +142,9 @@ function buildAgent(address: string, scenario: MockScenario): SimAgent {
   }
 }
 
-function snapshot(agent: SimAgent, bus: SimBus): CanBusSnapshot {
+function snapshot(bus: SimBus): CanBusSnapshot {
   return {
     captured_at_unix_ms: Date.now(),
-    extension: { id: CAN_EXTENSION_ID, version: "0.1.12", state: agent.extState },
     bus: { ...bus.state, periodics: [...bus.periodics.values()] },
   };
 }
@@ -243,15 +241,25 @@ function buildActionsList(agentMap: Map<string, SimAgent>) {
       out[addr] = [];
       continue;
     }
-    const paths: string[] = [];
-    for (const busName of a.buses.keys()) {
-      for (const method of REQUIRED_CAN_METHODS) {
-        paths.push(`can/${busName}/${method}`);
-      }
-    }
-    out[addr] = paths;
+    // Single global namespace — one set of actions, regardless of bus count.
+    out[addr] = REQUIRED_CAN_METHODS.map((m) => `can/${m}`);
   }
   return out;
+}
+
+/** Extract the `codec` param from an action's params dict, falling back to a
+ *  clear error so the mock catches typos in the same place the real agent
+ *  would catch them. Per-bus actions all require `codec` — the discovery
+ *  action (`list_codecs`) does not. */
+function requireCodec(actionParams: unknown, action: string): string {
+  if (actionParams === null || typeof actionParams !== "object") {
+    throw new Error(`mock-host: ${action} requires params object with codec`);
+  }
+  const { codec } = actionParams as { codec?: unknown };
+  if (typeof codec !== "string" || codec.length === 0) {
+    throw new Error(`mock-host: ${action} requires non-empty string codec`);
+  }
+  return codec;
 }
 
 async function handleActionExecute(agentMap: Map<string, SimAgent>, params: unknown) {
@@ -264,22 +272,34 @@ async function handleActionExecute(agentMap: Map<string, SimAgent>, params: unkn
   const agent = agentMap.get(agentAddr);
   if (!agent) throw new Error(`mock-host: unknown agent "${agentAddr}"`);
 
-  const match = CAN_ACTION_PATH_RE.exec(action);
-  if (!match) throw new Error(`mock-host: action path doesn't match can/<bus>/<method>: ${action}`);
-  const busName = match[1]!;
-  const methodName = action.slice(`can/${busName}/`.length);
+  // Action paths are bare `can/<method>` — no bus segment.
+  if (!action.startsWith("can/")) {
+    throw new Error(`mock-host: action path doesn't start with can/: ${action}`);
+  }
+  const methodName = action.slice("can/".length);
 
-  const bus = agent.buses.get(busName);
-  if (!bus) throw new Error(`mock-host: unknown bus "${busName}" on agent "${agentAddr}"`);
+  // Discovery action — no codec parameter.
+  if (methodName === CAN_METHODS.listCodecs) {
+    return { status: "pass", result: { codecs: [...agent.buses.keys()] } };
+  }
+
+  const codec = requireCodec(actionParams, action);
+  const bus = agent.buses.get(codec);
+  if (!bus) {
+    return {
+      status: "fail",
+      result: { reason: `mock-host: unknown codec "${codec}" on agent "${agentAddr}"` },
+    };
+  }
 
   switch (methodName) {
     case CAN_METHODS.getTxState:
-      return { status: "pass", result: snapshot(agent, bus) };
+      return { status: "pass", result: snapshot(bus) };
     case CAN_METHODS.listMessages:
       return {
         status: "pass",
         result: {
-          bus: busName,
+          bus: codec,
           dbc_name: DEMO_DBC.dbc_name,
           // Strip signals — list_messages is the lightweight summary call.
           messages: DEMO_DBC.messages.map((m) => ({
@@ -302,7 +322,7 @@ async function handleActionExecute(agentMap: Map<string, SimAgent>, params: unkn
       }
       return {
         status: "pass",
-        result: { bus: busName, dbc_name: DEMO_DBC.dbc_name, message: msg },
+        result: { bus: codec, dbc_name: DEMO_DBC.dbc_name, message: msg },
       };
     }
     case CAN_METHODS.sendRaw:
