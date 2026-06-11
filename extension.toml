@@ -6,14 +6,13 @@ repository = "https://github.com/zeloscloud/zelos-app-can-tx"
 icon = "assets/icon.png"
 readme = "README.md"
 
-# Compatibility — pinned to the host that ships the actions.* / extensions.list
-# bridge surface. The extensions.start/stop server side will land in 26.0.5+;
-# until 26.0.5-alpha is cut, we keep the pin at 26.0.4 so the app can install
-# against the current released host. The ExtensionToggle gracefully degrades
-# if start/stop dispatchers are absent (returns an "unknown method" error
-# that the toast surface presents to the user).
+# Compatibility — pinned to the host that ships the extensions.start/stop
+# server side (in addition to the actions.* / extensions.list bridge
+# surface that's been around since 26.0.3). The `-0` suffix tells the
+# semver resolver to also accept 26.0.5 pre-releases (alpha/beta), since
+# 26.0.5-alpha.0 is the first cut that ships the lifecycle dispatchers.
 [zelos]
-version = ">=26.0.4"
+version = ">=26.0.5-0"
 
 [host]
 type = "app"
