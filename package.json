@@ -1,28 +1,5 @@
 {
-  "name": "zelos-app-can-tx",
-  "private": true,
-  "version": "0.1.0",
-  "type": "module",
-  "description": "CAN transmit marketplace app extension",
   "author": "Zelos",
-  "packageManager": "npm@10.8.2",
-  "engines": {
-    "node": "20.x",
-    "npm": "10.x"
-  },
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "lint": "eslint src/",
-    "tsc": "tsc --noEmit",
-    "check": "npm run lint && npm run tsc",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "package": "zelos extensions package ."
-  },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-label": "^2.1.8",
@@ -41,6 +18,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0"
   },
+  "description": "CAN transmit marketplace app extension",
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@tailwindcss/vite": "^4.0.0",
@@ -58,5 +36,27 @@
     "typescript-eslint": "^8.0.0",
     "vite": "^5.4.19",
     "vitest": "^2.1.8"
-  }
+  },
+  "engines": {
+    "node": "20.x",
+    "npm": "10.x"
+  },
+  "name": "zelos-app-can-tx",
+  "packageManager": "npm@10.8.2",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "check": "npm run lint && npm run tsc",
+    "dev": "vite",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint src/",
+    "package": "zelos extensions package .",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "tsc": "tsc --noEmit"
+  },
+  "type": "module",
+  "version": "0.1.0"
 }
