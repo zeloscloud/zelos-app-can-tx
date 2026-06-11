@@ -1,0 +1,33 @@
+name = "CAN Transmit"
+version = "0.1.0"
+description = "Transmit CAN frames (raw + DBC, one-shot + periodic) through the Zelos CAN agent extension."
+author = "Zelos"
+repository = "https://github.com/zeloscloud/zelos-app-can-tx"
+icon = "assets/icon.png"
+readme = "README.md"
+
+# Compatibility — pinned to the host that ships the extensions.start/stop
+# server side (in addition to the actions.* / extensions.list bridge
+# surface that's been around since 26.0.3). The `-0` suffix tells the
+# semver resolver to also accept 26.0.5 pre-releases (alpha/beta), since
+# 26.0.5-alpha.0 is the first cut that ships the lifecycle dispatchers.
+[zelos]
+version = ">=26.0.5-0"
+
+[host]
+type = "app"
+
+[host.app]
+kind = "web_app"
+entry = "dist/index.html"
+
+[package]
+paths = ["dist"]
+
+# This app drives the CAN agent extension exclusively. The host should surface a
+# clear "missing dependency" state at install time if the required extension is
+# not present, instead of leaving the user with a useless "extension missing"
+# banner.
+[[requires]]
+extension = "zeloscloud.zelos-extension-can"
+version = ">=0.1.12"
