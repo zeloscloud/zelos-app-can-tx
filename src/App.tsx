@@ -66,9 +66,7 @@ function DiscoveryView({
   // Discriminated union: "add" carries the (agent, bus) of the panel/subcard
   // that triggered the dialog; "edit" carries the row to seed from. null = closed.
   const [dialogState, setDialogState] = React.useState<
-    | { mode: "add"; agent: string; bus: string }
-    | { mode: "edit"; row: TransmitRow }
-    | null
+    { mode: "add"; agent: string; bus: string } | { mode: "edit"; row: TransmitRow } | null
   >(null);
 
   // Resolve the open dialog's (agent address, bus) and verify the target agent

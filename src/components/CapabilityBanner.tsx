@@ -7,8 +7,7 @@
 import type { TopLevelDisabledReason } from "../lib/capability";
 
 const DISABLED_COPY: Record<TopLevelDisabledReason, string> = {
-  "not-live":
-    "CAN transmit requires a LIVE workspace. Switch to LIVE to continue.",
+  "not-live": "CAN transmit requires a LIVE workspace. Switch to LIVE to continue.",
   "no-agents-connected":
     "No agents are reachable from this workspace. Add an agent in the desktop's workspace settings, then refresh.",
 };

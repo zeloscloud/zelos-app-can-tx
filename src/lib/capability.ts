@@ -79,14 +79,16 @@ export function discoverCanTx(input: DiscoverInputs): CanTxDiscovery {
     return { kind: "disabled", reason: "no-agents-connected" };
   }
 
-  const agents: AgentStatus[] = [...addrs].sort().map((agent) =>
-    resolveAgentStatus(
-      agent,
-      input.extensionsByAgent?.[agent] ?? [],
-      input.actionsByAgent?.[agent] ?? [],
-      input.codecsByAgent?.[agent],
-    ),
-  );
+  const agents: AgentStatus[] = [...addrs]
+    .sort()
+    .map((agent) =>
+      resolveAgentStatus(
+        agent,
+        input.extensionsByAgent?.[agent] ?? [],
+        input.actionsByAgent?.[agent] ?? [],
+        input.codecsByAgent?.[agent],
+      ),
+    );
   return { kind: "ready", agents };
 }
 

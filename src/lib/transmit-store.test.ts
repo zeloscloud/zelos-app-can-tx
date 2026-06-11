@@ -66,7 +66,15 @@ describe("defaultRowName", () => {
 
 describe("loadRows / saveRows", () => {
   it("round-trips a list of rows through localStorage", () => {
-    const a = createRow({ name: "a", agent: "x", bus: "y", mode: "raw", period_ms: 50, can_id: "0x100", data: "01" });
+    const a = createRow({
+      name: "a",
+      agent: "x",
+      bus: "y",
+      mode: "raw",
+      period_ms: 50,
+      can_id: "0x100",
+      data: "01",
+    });
     const b = createRow({
       name: "b",
       agent: "x",

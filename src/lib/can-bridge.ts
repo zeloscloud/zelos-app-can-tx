@@ -30,7 +30,10 @@ import {
 
 /** Names of every CAN bus the extension currently has running on the named
  *  agent. The capability resolver consumes this to enumerate ready buses. */
-export async function listCodecs(bridge: BridgeTransport, agent: string): Promise<{ codecs: string[] }> {
+export async function listCodecs(
+  bridge: BridgeTransport,
+  agent: string,
+): Promise<{ codecs: string[] }> {
   const res = await actions.execute<{ codecs: string[] }>(bridge, {
     agent,
     action: canActionPath(CAN_METHODS.listCodecs),
@@ -40,7 +43,11 @@ export async function listCodecs(bridge: BridgeTransport, agent: string): Promis
   return res.result;
 }
 
-export async function getBusSnapshot(bridge: BridgeTransport, agent: string, codec: string): Promise<CanBusSnapshot> {
+export async function getBusSnapshot(
+  bridge: BridgeTransport,
+  agent: string,
+  codec: string,
+): Promise<CanBusSnapshot> {
   const res = await actions.execute<CanBusSnapshot>(bridge, {
     agent,
     action: canActionPath(CAN_METHODS.getTxState),

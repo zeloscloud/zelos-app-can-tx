@@ -90,16 +90,19 @@ export function AgentPanel({
           </p>
         )}
 
-        {agent.kind === "no-ready-buses" && agent.missingMethods && agent.missingMethods.length > 0 && (
-          <pre className="rounded bg-muted p-3 text-xs whitespace-pre-wrap">
-            {`Extension is running but missing required actions:\n  ${agent.missingMethods.join("\n  ")}`}
-          </pre>
-        )}
-        {agent.kind === "no-ready-buses" && (!agent.missingMethods || agent.missingMethods.length === 0) && (
-          <p className="text-xs text-muted-foreground">
-            The extension is running but no buses are configured. Check the extension's bus list.
-          </p>
-        )}
+        {agent.kind === "no-ready-buses" &&
+          agent.missingMethods &&
+          agent.missingMethods.length > 0 && (
+            <pre className="rounded bg-muted p-3 text-xs whitespace-pre-wrap">
+              {`Extension is running but missing required actions:\n  ${agent.missingMethods.join("\n  ")}`}
+            </pre>
+          )}
+        {agent.kind === "no-ready-buses" &&
+          (!agent.missingMethods || agent.missingMethods.length === 0) && (
+            <p className="text-xs text-muted-foreground">
+              The extension is running but no buses are configured. Check the extension's bus list.
+            </p>
+          )}
         {agent.kind === "discovering-codecs" && (
           <p className="text-xs text-muted-foreground">Discovering buses…</p>
         )}
@@ -342,11 +345,7 @@ function BusStatsRow({
         </div>
         {err && <p className="text-[11px] text-destructive">{err.message}</p>}
       </div>
-      <Button
-        variant="outline"
-        onClick={onAdd}
-        className="h-auto shrink-0 self-stretch px-4"
-      >
+      <Button variant="outline" onClick={onAdd} className="h-auto shrink-0 self-stretch px-4">
         <Plus className="h-4 w-4" />
         Add message
       </Button>
@@ -379,8 +378,7 @@ function useRxFps(snapshot: import("@/lib/types").CanBusSnapshot | undefined): n
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const variant =
-    status === "active" ? "success" : status === "error" ? "destructive" : "warning";
+  const variant = status === "active" ? "success" : status === "error" ? "destructive" : "warning";
   return <Badge variant={variant}>{status}</Badge>;
 }
 
@@ -430,7 +428,10 @@ function TransmitRowView({
     delete: "Delete",
   };
 
-  async function withBusy<T>(label: NonNullable<typeof busy>, fn: () => Promise<T>): Promise<T | undefined> {
+  async function withBusy<T>(
+    label: NonNullable<typeof busy>,
+    fn: () => Promise<T>,
+  ): Promise<T | undefined> {
     setBusy(label);
     try {
       return await fn();
@@ -696,7 +697,10 @@ function renderRowCells(row: TransmitRow): {
           {row.mux ? (
             <div className="text-muted-foreground">
               {row.dbc_mux_signal ?? "mux"} ={" "}
-              {formatSignalValue(row.mux, row.dbc_mux_signal ? tables?.[row.dbc_mux_signal] : undefined)}
+              {formatSignalValue(
+                row.mux,
+                row.dbc_mux_signal ? tables?.[row.dbc_mux_signal] : undefined,
+              )}
             </div>
           ) : null}
         </div>

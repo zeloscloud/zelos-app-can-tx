@@ -2,12 +2,7 @@
 
 import type { ExtensionEntry } from "@zeloscloud/app-extension-sdk";
 import { describe, expect, it } from "vitest";
-import {
-  discoverCanTx,
-  resolveAgentStatus,
-  statusLabel,
-  type DiscoverInputs,
-} from "./capability";
+import { discoverCanTx, resolveAgentStatus, statusLabel, type DiscoverInputs } from "./capability";
 import { canActionPath, CAN_EXTENSION_ID, REQUIRED_CAN_METHODS } from "./types";
 
 const runningCanExt: ExtensionEntry = {
@@ -45,12 +40,9 @@ function baseDiscoveryInput(overrides: Partial<DiscoverInputs> = {}): DiscoverIn
 
 describe("resolveAgentStatus", () => {
   it("returns ready when extension is running, actions are registered, and list_codecs reports at least one bus", () => {
-    const status = resolveAgentStatus(
-      "localhost:2300",
-      [runningCanExt],
-      allRequiredActionPaths(),
-      ["busA"],
-    );
+    const status = resolveAgentStatus("localhost:2300", [runningCanExt], allRequiredActionPaths(), [
+      "busA",
+    ]);
     expect(status.kind).toBe("ready");
     if (status.kind === "ready") {
       expect(status.extension).toBe(runningCanExt);
@@ -86,10 +78,7 @@ describe("resolveAgentStatus", () => {
   });
 
   it("returns no-ready-buses with missingMethods detail when required actions are missing", () => {
-    const incomplete = [
-      canActionPath("get_tx_state"),
-      canActionPath("list_messages"),
-    ];
+    const incomplete = [canActionPath("get_tx_state"), canActionPath("list_messages")];
     const status = resolveAgentStatus("a:1", [runningCanExt], incomplete, undefined);
     expect(status.kind).toBe("no-ready-buses");
     if (status.kind === "no-ready-buses") {
@@ -100,12 +89,7 @@ describe("resolveAgentStatus", () => {
   });
 
   it("returns discovering-codecs when extension + actions are healthy but list_codecs hasn't resolved", () => {
-    const status = resolveAgentStatus(
-      "a:1",
-      [runningCanExt],
-      allRequiredActionPaths(),
-      undefined,
-    );
+    const status = resolveAgentStatus("a:1", [runningCanExt], allRequiredActionPaths(), undefined);
     expect(status.kind).toBe("discovering-codecs");
   });
 
@@ -118,12 +102,10 @@ describe("resolveAgentStatus", () => {
   });
 
   it("returns multiple ready buses when list_codecs reports more than one codec", () => {
-    const status = resolveAgentStatus(
-      "a:1",
-      [runningCanExt],
-      allRequiredActionPaths(),
-      ["busA", "busB"],
-    );
+    const status = resolveAgentStatus("a:1", [runningCanExt], allRequiredActionPaths(), [
+      "busA",
+      "busB",
+    ]);
     expect(status.kind).toBe("ready");
     if (status.kind === "ready") {
       expect(status.buses?.map((b) => b.name)).toEqual(["busA", "busB"]);
@@ -176,7 +158,11 @@ describe("discoverCanTx", () => {
     );
     expect(disc.kind).toBe("ready");
     if (disc.kind === "ready") {
-      expect(disc.agents.map((a) => a.agent)).toEqual(["alt:2300", "localhost:2300", "remote:2300"]);
+      expect(disc.agents.map((a) => a.agent)).toEqual([
+        "alt:2300",
+        "localhost:2300",
+        "remote:2300",
+      ]);
     }
   });
 

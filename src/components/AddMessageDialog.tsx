@@ -221,7 +221,9 @@ export function AddMessageDialog({
             .map((s) => s.mux_value),
         );
         if (declared.size > 0 && (!Number.isFinite(parsedMux) || !declared.has(parsedMux))) {
-          const allowed = Array.from(declared).sort((a, b) => Number(a) - Number(b)).join(", ");
+          const allowed = Array.from(declared)
+            .sort((a, b) => Number(a) - Number(b))
+            .join(", ");
           setSubmitError(
             `Multiplexer ${muxIndicatorSig.name} = ${dbcMux || "(empty)"} has no signals declared. Allowed values: ${allowed}.`,
           );
@@ -417,9 +419,7 @@ function ModeSegment({
       onClick={onClick}
       className={
         "inline-flex h-full items-center rounded-sm px-3 text-xs font-medium transition-all " +
-        (active
-          ? "bg-background text-foreground shadow"
-          : "hover:text-foreground")
+        (active ? "bg-background text-foreground shadow" : "hover:text-foreground")
       }
     >
       {children}
@@ -490,9 +490,7 @@ function DbcForm({
   setSignals,
 }: {
   catalogQuery: ReturnType<typeof useQuery<import("@/lib/types").DbcCatalog, Error>>;
-  describeQuery: ReturnType<
-    typeof useQuery<import("@/lib/types").DbcMessageDescription, Error>
-  >;
+  describeQuery: ReturnType<typeof useQuery<import("@/lib/types").DbcMessageDescription, Error>>;
   selectedMessage: string;
   onSelectMessage: (v: string) => void;
   dbcMessage: DbcMessage | undefined;
@@ -714,9 +712,7 @@ function signalPhysicalRange(
 ): { min: number; max: number } | null {
   const fromField = fieldDerivedRange(signal);
   const fromDbc =
-    signal.min != null && signal.max != null
-      ? { min: signal.min, max: signal.max }
-      : null;
+    signal.min != null && signal.max != null ? { min: signal.min, max: signal.max } : null;
   if (fromField && fromDbc) {
     return {
       min: Math.max(fromField.min, fromDbc.min),

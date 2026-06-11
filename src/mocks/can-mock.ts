@@ -73,8 +73,26 @@ const DEMO_DBC: { dbc_name: string; messages: DbcMessage[] } = {
       dlc: 8,
       cycle_time_ms: 100,
       signals: [
-        { name: "Speed", start_bit: 0, length: 16, byte_order: "little", is_signed: false, scale: 0.01, offset: 0, unit: "km/h" },
-        { name: "Gear", start_bit: 16, length: 4, byte_order: "little", is_signed: false, scale: 1, offset: 0, value_table: { "0": "P", "1": "R", "2": "N", "3": "D" } },
+        {
+          name: "Speed",
+          start_bit: 0,
+          length: 16,
+          byte_order: "little",
+          is_signed: false,
+          scale: 0.01,
+          offset: 0,
+          unit: "km/h",
+        },
+        {
+          name: "Gear",
+          start_bit: 16,
+          length: 4,
+          byte_order: "little",
+          is_signed: false,
+          scale: 1,
+          offset: 0,
+          value_table: { "0": "P", "1": "R", "2": "N", "3": "D" },
+        },
       ],
     },
     {
@@ -84,8 +102,26 @@ const DEMO_DBC: { dbc_name: string; messages: DbcMessage[] } = {
       dlc: 8,
       cycle_time_ms: 500,
       signals: [
-        { name: "SoC", start_bit: 0, length: 8, byte_order: "little", is_signed: false, scale: 1, offset: 0, unit: "%" },
-        { name: "VoltagePack", start_bit: 8, length: 16, byte_order: "little", is_signed: false, scale: 0.1, offset: 0, unit: "V" },
+        {
+          name: "SoC",
+          start_bit: 0,
+          length: 8,
+          byte_order: "little",
+          is_signed: false,
+          scale: 1,
+          offset: 0,
+          unit: "%",
+        },
+        {
+          name: "VoltagePack",
+          start_bit: 8,
+          length: 16,
+          byte_order: "little",
+          is_signed: false,
+          scale: 0.1,
+          offset: 0,
+          unit: "V",
+        },
       ],
     },
   ],
@@ -111,7 +147,10 @@ function buildBus(name: string): SimBus {
   };
 }
 
-function buildReadyAgent(address: string, busNames: readonly string[] = ["busA", "busB"]): SimAgent {
+function buildReadyAgent(
+  address: string,
+  busNames: readonly string[] = ["busA", "busB"],
+): SimAgent {
   return {
     address,
     extInstalled: true,
@@ -149,7 +188,11 @@ function snapshot(bus: SimBus): CanBusSnapshot {
   };
 }
 
-function taskIdFor(canIdHex: string, isExtended: boolean, mux: number | string | null | "raw"): string {
+function taskIdFor(
+  canIdHex: string,
+  isExtended: boolean,
+  mux: number | string | null | "raw",
+): string {
   return `${canIdHex.toLowerCase()}:${isExtended ? "ext" : "std"}:${mux}`;
 }
 
@@ -225,7 +268,10 @@ function handleExtensionLifecycle(
 }
 
 function buildExtensionsList(agentMap: Map<string, SimAgent>) {
-  const out: Record<string, Array<{ id: string; name: string; version: string; state: string }>> = {};
+  const out: Record<
+    string,
+    Array<{ id: string; name: string; version: string; state: string }>
+  > = {};
   for (const [addr, a] of agentMap) {
     out[addr] = a.extInstalled
       ? [{ id: CAN_EXTENSION_ID, name: "CAN", version: "0.1.12", state: a.extState }]
@@ -264,7 +310,11 @@ function requireCodec(actionParams: unknown, action: string): string {
 
 async function handleActionExecute(agentMap: Map<string, SimAgent>, params: unknown) {
   if (params === null || typeof params !== "object") throw new Error("mock-host: bad params");
-  const { agent: agentAddr, action, params: actionParams } = params as {
+  const {
+    agent: agentAddr,
+    action,
+    params: actionParams,
+  } = params as {
     agent: string;
     action: string;
     params?: unknown;
@@ -387,7 +437,11 @@ function startPeriodicMessageSim(bus: SimBus, params: MockDbcParams) {
     period_ms: params.period_ms,
     mode: "dbc",
     is_active: true,
-    message: { name: msg.name, mux, signals: JSON.parse(params.signals_json) as Record<string, unknown> },
+    message: {
+      name: msg.name,
+      mux,
+      signals: JSON.parse(params.signals_json) as Record<string, unknown>,
+    },
   });
   return { task_id, replaced };
 }

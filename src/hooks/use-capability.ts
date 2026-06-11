@@ -93,9 +93,7 @@ export function useCanDiscovery(input: UseCanDiscoveryInput): {
   return {
     discovery,
     isLoading:
-      extensionsQuery.isLoading ||
-      actionsQuery.isLoading ||
-      codecQueries.some((q) => q.isLoading),
+      extensionsQuery.isLoading || actionsQuery.isLoading || codecQueries.some((q) => q.isLoading),
     refetch: () => {
       void extensionsQuery.refetch();
       void actionsQuery.refetch();
