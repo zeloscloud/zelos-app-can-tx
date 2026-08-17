@@ -27,11 +27,11 @@ export const CAN_EXTENSION_INSTALL_IDS: ReadonlySet<string> = new Set([
 ]);
 
 /** Bare method names exposed by the CAN extension. The on-wire surface is a
- *  single global namespace: every method is `can/<method>` and takes a
+ *  single global namespace: every method is `<prefix>/<method>` and takes a
  *  `codec` parameter (the bus name) to select which bus to operate on.
- *  Per-bus actions (`can/<bus>/<method>`) are NOT used — see ARCHITECTURE
+ *  Per-bus actions (`<prefix>/<bus>/<method>`) are NOT used — see ARCHITECTURE
  *  note in this file for the rationale. Use {@link canActionPath} to build
- *  a full path. */
+ *  a full path, with a prefix from {@link resolveCanActionPrefix}. */
 export const CAN_METHODS = {
   listCodecs: "list_codecs",
   getTxState: "get_tx_state",
@@ -63,9 +63,59 @@ export const REQUIRED_CAN_METHODS: readonly CanMethodName[] = [
   CAN_METHODS.stopPeriodic,
 ];
 
-/** Build the full action path for a given method. */
-export function canActionPath(method: CanMethodName | string): string {
-  return `can/${method}`;
+/** What the extension called its action namespace before it was aligned with
+ *  the manifest's user-visible name. Kept as the fallback so an older install
+ *  keeps working against a newer app. */
+export const LEGACY_CAN_ACTION_PREFIX = "can";
+
+/** Build the full action path for a given method under a resolved namespace.
+ *
+ *  The prefix is discovered per agent rather than hardcoded — see
+ *  {@link resolveCanActionPrefix}. Two agents on one workspace can be running
+ *  different extension versions, so the namespace is a property of the agent,
+ *  not of the app. */
+export function canActionPath(method: CanMethodName | string, prefix: string): string {
+  return `${prefix}/${method}`;
+}
+
+/** Find which namespace this agent serves the CAN actions under.
+ *
+ *  The extension addresses its actions under the name its manifest declares,
+ *  which is `CAN`; older builds used `can`. Rather than probing both, take the
+ *  answer from the agent's own action list: the namespace serving
+ *  `list_codecs` is the one to talk to. That keeps working through any future
+ *  rename, and through an agent running two CAN-ish extensions, without the
+ *  app having to know the history.
+ *
+ *  Returns `null` when no namespace on this agent serves the discovery action,
+ *  which the resolver reports as a missing-actions state rather than guessing.
+ */
+export function resolveCanActionPrefix(actionPaths: readonly string[]): string | null {
+  const known = new Set<string>(Object.values(CAN_METHODS));
+
+  // Scored across every known method, not just the discovery action: an
+  // extension that registered a partial surface still needs a namespace, or
+  // the resolver could not tell "wrong version" from "no CAN extension here".
+  const hits = new Map<string, number>();
+  for (const path of actionPaths) {
+    const cut = path.lastIndexOf("/");
+    if (cut <= 0) continue;
+    if (!known.has(path.slice(cut + 1))) continue;
+    const prefix = path.slice(0, cut);
+    hits.set(prefix, (hits.get(prefix) ?? 0) + 1);
+  }
+  if (hits.size === 0) return null;
+
+  // Deterministic when an agent somehow serves more than one: most methods
+  // wins, then a case-insensitive `can`, then sorted order — so the choice
+  // never depends on the order the agent happened to list them in.
+  return [...hits.entries()].sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    const aCanon = a[0].toLowerCase() === LEGACY_CAN_ACTION_PREFIX ? 0 : 1;
+    const bCanon = b[0].toLowerCase() === LEGACY_CAN_ACTION_PREFIX ? 0 : 1;
+    if (aCanon !== bCanon) return aCanon - bCanon;
+    return a[0].localeCompare(b[0]);
+  })[0]![0];
 }
 
 // `can/list_codecs` returns `{ codecs: string[] }` — defined inline in

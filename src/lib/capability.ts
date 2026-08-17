@@ -16,7 +16,12 @@
 
 import type { ExtensionEntry } from "@zeloscloud/app-extension-sdk";
 
-import { canActionPath, CAN_EXTENSION_INSTALL_IDS, REQUIRED_CAN_METHODS } from "./types";
+import {
+  canActionPath,
+  CAN_EXTENSION_INSTALL_IDS,
+  REQUIRED_CAN_METHODS,
+  resolveCanActionPrefix,
+} from "./types";
 
 export type AgentStatusKind =
   | "ready"
@@ -39,6 +44,11 @@ export interface AgentStatus {
   extension?: ExtensionEntry;
   /** Present only when `kind === "ready"`. */
   buses?: readonly ReadyBus[];
+  /** Namespace this agent serves the CAN actions under, discovered from its
+   *  own action list. Present only when `kind === "ready"`, which is the only
+   *  state in which a caller may issue an action. Pass it to
+   *  {@link canActionPath} rather than assuming a casing. */
+  actionPrefix?: string;
   /** Present only when `kind === "no-ready-buses"` and we know the action
    *  surface itself is missing methods (vs. having zero codecs configured). */
   missingMethods?: readonly string[];
@@ -111,13 +121,29 @@ export function resolveAgentStatus(
     return { agent, kind: "extension-stopped", extension: ext };
   }
 
+  // Which namespace this agent serves the actions under. Discovered, not
+  // assumed: the extension addresses them under its manifest name (`CAN`),
+  // older builds used `can`, and an agent may be running either.
+  const prefix = resolveCanActionPrefix(actionPaths);
+  if (prefix === null) {
+    // No namespace here serves the discovery action, so every method is
+    // missing. Reported the same way a partial surface is, rather than
+    // guessing a prefix and reporting each call as an unknown action.
+    return {
+      agent,
+      kind: "no-ready-buses",
+      extension: ext,
+      missingMethods: [...REQUIRED_CAN_METHODS],
+    };
+  }
+
   // Confirm every required action path is registered. A missing action path
   // here means the extension is the wrong version (or didn't finish
   // registering), not that buses are misconfigured.
   const actionSet = new Set(actionPaths);
   const missing: string[] = [];
   for (const method of REQUIRED_CAN_METHODS) {
-    if (!actionSet.has(canActionPath(method))) missing.push(method);
+    if (!actionSet.has(canActionPath(method, prefix))) missing.push(method);
   }
   if (missing.length > 0) {
     return { agent, kind: "no-ready-buses", extension: ext, missingMethods: missing };
@@ -136,6 +162,7 @@ export function resolveAgentStatus(
     kind: "ready",
     extension: ext,
     buses: codecs.map((name) => ({ name })),
+    actionPrefix: prefix,
   };
 }
 

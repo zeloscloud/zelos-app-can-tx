@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useBusSnapshot } from "@/hooks/use-tx-state";
+import { LEGACY_CAN_ACTION_PREFIX } from "@/lib/types";
 import type { AgentStatus } from "@/lib/capability";
 import {
   sendMessage,
@@ -47,6 +48,10 @@ export function AgentPanel({
   onRefresh,
 }: AgentPanelProps) {
   const isReady = agent.kind === "ready" && !!agent.buses && agent.buses.length > 0;
+  // Discovery names the namespace on the ready status. The fallback is the
+  // pre-rename prefix, so an older extension the resolver could not classify
+  // still gets talked to the way it used to be.
+  const actionPrefix = agent.actionPrefix ?? LEGACY_CAN_ACTION_PREFIX;
 
   return (
     <Card>
@@ -116,6 +121,7 @@ export function AgentPanel({
                 key={b.name}
                 bridge={bridge}
                 agentAddress={agent.agent}
+                actionPrefix={actionPrefix}
                 bus={b.name}
                 rows={rows.filter((r) => r.bus === b.name)}
                 onAdd={() => onAddClick(agent.agent, b.name)}
@@ -134,6 +140,7 @@ export function AgentPanel({
 function BusSection({
   bridge,
   agentAddress,
+  actionPrefix,
   bus,
   rows,
   onAdd,
@@ -143,6 +150,7 @@ function BusSection({
 }: {
   bridge: BridgeTransport;
   agentAddress: string;
+  actionPrefix: string;
   bus: string;
   rows: readonly TransmitRow[];
   onAdd: () => void;
@@ -152,7 +160,13 @@ function BusSection({
 }) {
   return (
     <div className="rounded-lg border border-border bg-background/40">
-      <BusStatsRow bridge={bridge} agent={agentAddress} bus={bus} onAdd={onAdd} />
+      <BusStatsRow
+        bridge={bridge}
+        agent={agentAddress}
+        actionPrefix={actionPrefix}
+        bus={bus}
+        onAdd={onAdd}
+      />
       <div className="border-t border-border px-3 py-3">
         {rows.length === 0 ? (
           <EmptyState bus={bus} />
@@ -188,6 +202,7 @@ function BusSection({
                   <TransmitRowView
                     key={row.id}
                     bridge={bridge}
+                    actionPrefix={actionPrefix}
                     row={row}
                     onUpdate={(patch) => onUpdateRow(row.id, patch)}
                     onEdit={() => onEditRow(row)}
@@ -298,15 +313,17 @@ function AgentBadge({ agent }: { agent: AgentStatus }) {
 function BusStatsRow({
   bridge,
   agent,
+  actionPrefix,
   bus,
   onAdd,
 }: {
   bridge: BridgeTransport;
   agent: string;
+  actionPrefix: string;
   bus: string;
   onAdd: () => void;
 }) {
-  const snapshotQuery = useBusSnapshot(bridge, agent, bus);
+  const snapshotQuery = useBusSnapshot(bridge, agent, bus, actionPrefix);
   const data = snapshotQuery.data?.bus;
   const err = snapshotQuery.error instanceof Error ? snapshotQuery.error : null;
   const fps = useRxFps(snapshotQuery.data);
@@ -386,18 +403,20 @@ function StatusBadge({ status }: { status: string }) {
  *  same bus share one underlying poll with BusStatsRow. */
 function TransmitRowView({
   bridge,
+  actionPrefix,
   row,
   onUpdate,
   onEdit,
   onRemove,
 }: {
   bridge: BridgeTransport;
+  actionPrefix: string;
   row: TransmitRow;
   onUpdate: (patch: Partial<TransmitRow>) => void;
   onEdit: () => void;
   onRemove: () => void;
 }) {
-  const snapshotQuery = useBusSnapshot(bridge, row.agent, row.bus);
+  const snapshotQuery = useBusSnapshot(bridge, row.agent, row.bus, actionPrefix);
   const isActive =
     !!row.last_task_id &&
     !!snapshotQuery.data?.bus.periodics.some((p) => p.task_id === row.last_task_id);
@@ -486,7 +505,7 @@ function TransmitRowView({
   async function handleSend() {
     if (row.mode === "raw") {
       await withBusy("send", () =>
-        sendRaw(bridge, row.agent, row.bus, {
+        sendRaw(bridge, row.agent, actionPrefix, row.bus, {
           can_id: row.can_id ?? "",
           data: row.data ?? "",
           is_extended: row.is_extended ?? false,
@@ -495,7 +514,7 @@ function TransmitRowView({
       );
     } else {
       await withBusy("send", () =>
-        sendMessage(bridge, row.agent, row.bus, {
+        sendMessage(bridge, row.agent, actionPrefix, row.bus, {
           message: row.message ?? "",
           signals_json: JSON.stringify(row.signals ?? {}),
           mux: row.mux ?? "",
@@ -507,7 +526,7 @@ function TransmitRowView({
   async function handleStart() {
     const result = await withBusy("start", async () => {
       if (row.mode === "raw") {
-        return await startPeriodicRaw(bridge, row.agent, row.bus, {
+        return await startPeriodicRaw(bridge, row.agent, actionPrefix, row.bus, {
           can_id: row.can_id ?? "",
           data: row.data ?? "",
           is_extended: row.is_extended ?? false,
@@ -515,7 +534,7 @@ function TransmitRowView({
           period_ms: row.period_ms,
         });
       }
-      return await startPeriodicMessage(bridge, row.agent, row.bus, {
+      return await startPeriodicMessage(bridge, row.agent, actionPrefix, row.bus, {
         message: row.message ?? "",
         signals_json: JSON.stringify(row.signals ?? {}),
         period_ms: row.period_ms,
@@ -528,7 +547,7 @@ function TransmitRowView({
   async function handleStop() {
     if (!row.last_task_id) return;
     await withBusy("stop", () =>
-      stopPeriodic(bridge, row.agent, row.bus, { task_id: row.last_task_id! }),
+      stopPeriodic(bridge, row.agent, actionPrefix, row.bus, { task_id: row.last_task_id! }),
     );
     onUpdate({ last_task_id: null });
   }
@@ -536,7 +555,7 @@ function TransmitRowView({
   async function handleDelete() {
     if (isActive && row.last_task_id) {
       try {
-        await stopPeriodic(bridge, row.agent, row.bus, { task_id: row.last_task_id });
+        await stopPeriodic(bridge, row.agent, actionPrefix, row.bus, { task_id: row.last_task_id });
       } catch {
         // Stop failed (e.g., agent already cleaned up); still remove the row
         // because the user's intent is "I don't want this anymore."

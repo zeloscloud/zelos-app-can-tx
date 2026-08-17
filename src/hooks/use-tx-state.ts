@@ -15,14 +15,19 @@ export function useBusSnapshot(
   bridge: BridgeTransport | null,
   agent: string | null,
   bus: string | null,
+  /** Action namespace for `agent`, from the ready status. Null until discovery
+   *  has named it, which also gates the query. */
+  prefix: string | null,
 ): UseQueryResult<CanBusSnapshot> {
   return useQuery<CanBusSnapshot>({
-    queryKey: ["can-bus-snapshot", agent, bus],
+    queryKey: ["can-bus-snapshot", agent, bus, prefix],
     queryFn: async () => {
-      if (!bridge || !agent || !bus) throw new Error("useBusSnapshot: bridge/agent/bus missing");
-      return await getBusSnapshot(bridge, agent, bus);
+      if (!bridge || !agent || !bus || !prefix) {
+        throw new Error("useBusSnapshot: bridge/agent/bus/prefix missing");
+      }
+      return await getBusSnapshot(bridge, agent, prefix, bus);
     },
-    enabled: bridge !== null && agent !== null && bus !== null,
+    enabled: bridge !== null && agent !== null && bus !== null && prefix !== null,
     staleTime: SNAPSHOT_POLL_MS,
     refetchInterval: SNAPSHOT_POLL_MS,
     refetchOnWindowFocus: true,

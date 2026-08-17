@@ -14,6 +14,7 @@ import { useCanDiscovery } from "@/hooks/use-capability";
 import { useTransmitList } from "@/hooks/use-transmit-list";
 import { copyToClipboard } from "@/lib/clipboard";
 import type { NewTransmitRow, TransmitRow } from "@/lib/transmit-store";
+import { LEGACY_CAN_ACTION_PREFIX } from "@/lib/types";
 
 export function App() {
   const bridge = useZelosBridge();
@@ -78,7 +79,13 @@ function DiscoveryView({
     const bus = dialogState.mode === "add" ? dialogState.bus : dialogState.row.bus;
     const found = discovery.agents.find((a) => a.agent === address);
     if (!found || found.kind !== "ready" || !found.buses?.length) return null;
-    return { agentAddress: address, bus };
+    // The namespace comes from the same ready status that gates the dialog, so
+    // it can never disagree with the agent the dialog is about.
+    return {
+      agentAddress: address,
+      bus,
+      actionPrefix: found.actionPrefix ?? LEGACY_CAN_ACTION_PREFIX,
+    };
   }, [dialogState, discovery]);
 
   const handleCopyLogs = React.useCallback(async () => {
@@ -163,6 +170,7 @@ function DiscoveryView({
           }}
           bridge={bridge}
           agentAddress={dialogTarget.agentAddress}
+          actionPrefix={dialogTarget.actionPrefix}
           bus={dialogTarget.bus}
           editRow={dialogState?.mode === "edit" ? dialogState.row : null}
           onSave={handleSave}
