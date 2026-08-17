@@ -46,6 +46,9 @@ export const CAN_METHODS = {
 
 export type CanMethodName = (typeof CAN_METHODS)[keyof typeof CAN_METHODS];
 
+/** Method names, as a set, for namespace resolution. */
+const KNOWN_CAN_METHODS: ReadonlySet<string> = new Set(Object.values(CAN_METHODS));
+
 /** Action paths every running CAN extension is expected to surface before the
  *  app considers it ready. `list_codecs` is the discovery action; the rest
  *  are operations the UI depends on. `describe_message` is included so the
@@ -91,31 +94,54 @@ export function canActionPath(method: CanMethodName | string, prefix: string): s
  *  which the resolver reports as a missing-actions state rather than guessing.
  */
 export function resolveCanActionPrefix(actionPaths: readonly string[]): string | null {
-  const known = new Set<string>(Object.values(CAN_METHODS));
+  interface Candidate {
+    prefix: string;
+    hits: number;
+    /** Serves the discovery action, which is what makes it *this* extension
+     *  rather than something that happens to share a method name. */
+    discovery: boolean;
+  }
 
-  // Scored across every known method, not just the discovery action: an
-  // extension that registered a partial surface still needs a namespace, or
-  // the resolver could not tell "wrong version" from "no CAN extension here".
-  const hits = new Map<string, number>();
+  const scored = new Map<string, Candidate>();
   for (const path of actionPaths) {
+    if (typeof path !== "string") continue;
     const cut = path.lastIndexOf("/");
     if (cut <= 0) continue;
-    if (!known.has(path.slice(cut + 1))) continue;
-    const prefix = path.slice(0, cut);
-    hits.set(prefix, (hits.get(prefix) ?? 0) + 1);
-  }
-  if (hits.size === 0) return null;
+    const method = path.slice(cut + 1);
+    if (!KNOWN_CAN_METHODS.has(method)) continue;
 
-  // Deterministic when an agent somehow serves more than one: most methods
-  // wins, then a case-insensitive `can`, then sorted order — so the choice
-  // never depends on the order the agent happened to list them in.
-  return [...hits.entries()].sort((a, b) => {
-    if (b[1] !== a[1]) return b[1] - a[1];
-    const aCanon = a[0].toLowerCase() === LEGACY_CAN_ACTION_PREFIX ? 0 : 1;
-    const bCanon = b[0].toLowerCase() === LEGACY_CAN_ACTION_PREFIX ? 0 : 1;
+    // A single segment only. This extension serves one flat namespace, so a
+    // nested `CAN/can0/send_raw` is not a prefix of ours — and treating it as
+    // one would address a per-bus namespace while still passing `codec` in the
+    // params, i.e. aim a frame at one bus and deliver it under another's.
+    const prefix = path.slice(0, cut);
+    if (prefix.includes("/")) continue;
+
+    const found = scored.get(prefix) ?? { prefix, hits: 0, discovery: false };
+    found.hits += 1;
+    found.discovery ||= method === CAN_METHODS.listCodecs;
+    scored.set(prefix, found);
+  }
+  if (scored.size === 0) return null;
+
+  // Ordering, most decisive first:
+  //
+  //  1. serves `list_codecs` — the discovery action, and the one method no
+  //     unrelated extension has a reason to expose. Without this tier a
+  //     namespace sharing two generic names (`send_raw`, `send_message`) can
+  //     outscore the real CAN extension mid-registration, and the app then
+  //     polls a stranger's `list_codecs` every 5 s.
+  //  2. most known methods — a fuller surface is the better match.
+  //  3. a case-insensitive `can`, then sorted order, so the answer never
+  //     depends on the order the agent happened to list them in.
+  return [...scored.values()].sort((a, b) => {
+    if (a.discovery !== b.discovery) return a.discovery ? -1 : 1;
+    if (b.hits !== a.hits) return b.hits - a.hits;
+    const aCanon = a.prefix.toLowerCase() === LEGACY_CAN_ACTION_PREFIX ? 0 : 1;
+    const bCanon = b.prefix.toLowerCase() === LEGACY_CAN_ACTION_PREFIX ? 0 : 1;
     if (aCanon !== bCanon) return aCanon - bCanon;
-    return a[0].localeCompare(b[0]);
-  })[0]![0];
+    return a.prefix.localeCompare(b.prefix);
+  })[0]!.prefix;
 }
 
 // `can/list_codecs` returns `{ codecs: string[] }` — defined inline in

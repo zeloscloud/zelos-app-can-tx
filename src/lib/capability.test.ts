@@ -85,7 +85,10 @@ describe("resolveAgentStatus", () => {
   });
 
   it("returns no-ready-buses with missingMethods detail when required actions are missing", () => {
-    const incomplete = [canActionPath("get_tx_state", "CAN"), canActionPath("list_messages", "CAN")];
+    const incomplete = [
+      canActionPath("get_tx_state", "CAN"),
+      canActionPath("list_messages", "CAN"),
+    ];
     const status = resolveAgentStatus("a:1", [runningCanExt], incomplete, undefined);
     expect(status.kind).toBe("no-ready-buses");
     if (status.kind === "no-ready-buses") {
@@ -253,9 +256,38 @@ describe("action namespace discovery", () => {
     expect(resolveCanActionPrefix(partial)).toBe("CAN");
   });
 
-  it("ignores namespaces that merely look similar", () => {
-    expect(resolveCanActionPrefix(["other/list_codecs", "canary/thing"])).toBe("other");
+  it("prefers the namespace serving the discovery action over a fuller stranger", () => {
+    // The failure this guards: another extension exposing two generic method
+    // names (`send_raw`, `send_message`) used to outscore the real CAN
+    // extension mid-registration, so the app polled a stranger's
+    // `list_codecs` every 5s and named the wrong methods as missing.
+    const midRegistration = [
+      canActionPath("list_codecs", "CAN"),
+      canActionPath("get_tx_state", "CAN"),
+      "serial/send_raw",
+      "serial/send_message",
+      "serial/list_messages",
+    ];
+    expect(resolveCanActionPrefix(midRegistration)).toBe("CAN");
+  });
+
+  it("rejects a nested namespace rather than aiming a frame under the wrong bus", () => {
+    // A per-bus namespace is not the shape this app talks to: addressing
+    // `CAN/can0/send_raw` while still passing `codec: "can1"` in the params
+    // would deliver a can1 frame under can0's namespace.
+    const perBus = [
+      "CAN/can0/list_codecs",
+      "CAN/can0/send_raw",
+      "CAN/can1/list_codecs",
+      "CAN/can1/send_raw",
+    ];
+    expect(resolveCanActionPrefix(perBus)).toBeNull();
+  });
+
+  it("ignores paths that are not CAN actions at all", () => {
     expect(resolveCanActionPrefix(["unrelated/thing"])).toBeNull();
+    expect(resolveCanActionPrefix(["list_codecs"])).toBeNull();
+    expect(resolveCanActionPrefix(["/list_codecs"])).toBeNull();
     expect(resolveCanActionPrefix([])).toBeNull();
   });
 

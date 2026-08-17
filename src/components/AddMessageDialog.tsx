@@ -129,18 +129,25 @@ export function AddMessageDialog({
   // change invalidates both tiers. The hash rides the 1 Hz bus snapshot
   // poll that's already running, so there's no extra agent traffic. When
   // the hash is unknown (older codec) we fall back to a 30 s stale-time.
-  const snapshotQuery = useBusSnapshot(bridge, agentAddress, bus, actionPrefix);
+  const snapshotQuery = useBusSnapshot(bridge, agentAddress, actionPrefix, bus);
   const dbcHash = snapshotQuery.data?.bus?.dbc?.hash ?? null;
 
   const catalogQuery = useQuery({
-    queryKey: ["can-list-messages", agentAddress, bus, dbcHash ?? "no-hash"],
+    queryKey: ["can-list-messages", agentAddress, actionPrefix, bus, dbcHash ?? "no-hash"],
     queryFn: async () => listMessages(bridge, agentAddress, actionPrefix, bus),
     enabled: open && mode === "dbc" && !!bus,
     staleTime: dbcHash ? Infinity : 30_000,
   });
 
   const describeQuery = useQuery({
-    queryKey: ["can-describe-message", agentAddress, bus, dbcMessage, dbcHash ?? "no-hash"],
+    queryKey: [
+      "can-describe-message",
+      agentAddress,
+      actionPrefix,
+      bus,
+      dbcMessage,
+      dbcHash ?? "no-hash",
+    ],
     queryFn: async () => describeMessage(bridge, agentAddress, actionPrefix, bus, dbcMessage),
     enabled: open && mode === "dbc" && !!bus && !!dbcMessage,
     staleTime: dbcHash ? Infinity : 30_000,

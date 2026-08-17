@@ -14,8 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useBusSnapshot } from "@/hooks/use-tx-state";
-import { LEGACY_CAN_ACTION_PREFIX } from "@/lib/types";
-import type { AgentStatus } from "@/lib/capability";
+import { agentActionPrefix, type AgentStatus } from "@/lib/capability";
 import {
   sendMessage,
   sendRaw,
@@ -48,10 +47,7 @@ export function AgentPanel({
   onRefresh,
 }: AgentPanelProps) {
   const isReady = agent.kind === "ready" && !!agent.buses && agent.buses.length > 0;
-  // Discovery names the namespace on the ready status. The fallback is the
-  // pre-rename prefix, so an older extension the resolver could not classify
-  // still gets talked to the way it used to be.
-  const actionPrefix = agent.actionPrefix ?? LEGACY_CAN_ACTION_PREFIX;
+  const actionPrefix = agentActionPrefix(agent);
 
   return (
     <Card>
@@ -323,7 +319,7 @@ function BusStatsRow({
   bus: string;
   onAdd: () => void;
 }) {
-  const snapshotQuery = useBusSnapshot(bridge, agent, bus, actionPrefix);
+  const snapshotQuery = useBusSnapshot(bridge, agent, actionPrefix, bus);
   const data = snapshotQuery.data?.bus;
   const err = snapshotQuery.error instanceof Error ? snapshotQuery.error : null;
   const fps = useRxFps(snapshotQuery.data);
@@ -416,7 +412,7 @@ function TransmitRowView({
   onEdit: () => void;
   onRemove: () => void;
 }) {
-  const snapshotQuery = useBusSnapshot(bridge, row.agent, row.bus, actionPrefix);
+  const snapshotQuery = useBusSnapshot(bridge, row.agent, actionPrefix, row.bus);
   const isActive =
     !!row.last_task_id &&
     !!snapshotQuery.data?.bus.periodics.some((p) => p.task_id === row.last_task_id);

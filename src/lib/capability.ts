@@ -19,6 +19,7 @@ import type { ExtensionEntry } from "@zeloscloud/app-extension-sdk";
 import {
   canActionPath,
   CAN_EXTENSION_INSTALL_IDS,
+  LEGACY_CAN_ACTION_PREFIX,
   REQUIRED_CAN_METHODS,
   resolveCanActionPrefix,
 } from "./types";
@@ -164,6 +165,17 @@ export function resolveAgentStatus(
     buses: codecs.map((name) => ({ name })),
     actionPrefix: prefix,
   };
+}
+
+/** The namespace to address this agent's CAN actions under.
+ *
+ *  `actionPrefix` is set on every `ready` status, so the fallback is
+ *  unreachable today — it exists because `AgentStatus` is a flat interface the
+ *  compiler cannot narrow on `kind`. Falling back to the pre-rename prefix
+ *  keeps an older install working rather than sending an empty namespace.
+ */
+export function agentActionPrefix(status: AgentStatus): string {
+  return status.actionPrefix ?? LEGACY_CAN_ACTION_PREFIX;
 }
 
 /** Short text label for the agent's status, used in chips + tooltips. */
