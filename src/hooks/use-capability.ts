@@ -16,7 +16,7 @@ import { useMemo } from "react";
 
 import { CAN_EXTENSION_INSTALL_IDS, resolveCanActionPrefix } from "../lib/types";
 import { listCodecs } from "../lib/can-bridge";
-import { discoverCanTx, type CanTxDiscovery } from "../lib/capability";
+import { discoverCanTx, missingCanMethods, type CanTxDiscovery } from "../lib/capability";
 
 export interface UseCanDiscoveryInput {
   bridge: BridgeTransport | null;
@@ -53,8 +53,9 @@ export function useCanDiscovery(input: UseCanDiscoveryInput): {
   // The namespace comes from the agent's own action list rather than a
   // constant: this call is itself part of discovery, so it cannot wait for the
   // resolver downstream to name the prefix. An agent whose actions have not
-  // arrived yet, or that serves no CAN namespace, is skipped — the resolver
-  // reports that as missing actions rather than us guessing a path.
+  // arrived yet, or whose namespace serves less than the full CAN surface, is
+  // skipped — the resolver reports that as missing actions rather than us
+  // polling a namespace we would refuse to write to.
   const codecTargets = useMemo<{ agent: string; prefix: string }[]>(() => {
     const byAgent = extensionsQuery.data;
     const actionsByAgent = actionsQuery.data;
@@ -62,8 +63,11 @@ export function useCanDiscovery(input: UseCanDiscoveryInput): {
     const result: { agent: string; prefix: string }[] = [];
     for (const [agent, exts] of Object.entries(byAgent)) {
       if (!exts.some((e) => CAN_EXTENSION_INSTALL_IDS.has(e.id) && e.state === "running")) continue;
-      const prefix = resolveCanActionPrefix(actionsByAgent[agent] ?? []);
-      if (prefix === null) continue;
+      const paths = actionsByAgent[agent] ?? [];
+      const prefix = resolveCanActionPrefix(paths);
+      // Same completeness gate the writes use, so a partial namespace is never
+      // polled every 5s.
+      if (prefix === null || missingCanMethods(paths, prefix).length > 0) continue;
       result.push({ agent, prefix });
     }
     return result.sort((a, b) => a.agent.localeCompare(b.agent));

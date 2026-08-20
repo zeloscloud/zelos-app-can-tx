@@ -111,6 +111,36 @@ describe("resolveAgentStatus", () => {
     }
   });
 
+  it("picks the running install over a stopped sibling, so Stop targets the transmitter", () => {
+    // Wrong pick here hides the transmit rows (status flips to
+    // extension-stopped) while the running install keeps driving the bus.
+    const status = resolveAgentStatus(
+      "a:1",
+      [{ ...localInstallCanExt, state: "stopped" }, runningCanExt],
+      allRequiredActionPaths(),
+      ["busA"],
+    );
+    expect(status.kind).toBe("ready");
+    expect(status.extension).toBe(runningCanExt);
+    expect(status.ambiguousInstalls).toBeUndefined();
+  });
+
+  it("names both installs when two are running, in either listed order", () => {
+    // Marketplace (`can/`) plus a local install (`CAN/`), both serving the full
+    // surface. Nothing in `extensions.list` says which one owns a namespace, so
+    // the pairing is reported instead of silently resolved.
+    const dual = [...allRequiredActionPaths("can"), ...allRequiredActionPaths("CAN")];
+    for (const exts of [
+      [runningCanExt, localInstallCanExt],
+      [localInstallCanExt, runningCanExt],
+    ]) {
+      const status = resolveAgentStatus("a:1", exts, dual, ["busA"]);
+      expect(status.kind).toBe("ready");
+      expect(status.extension?.id).toBe("local.can");
+      expect(status.ambiguousInstalls?.map((e) => e.id)).toEqual(["local.can", CAN_EXTENSION_ID]);
+    }
+  });
+
   it("returns multiple ready buses when list_codecs reports more than one codec", () => {
     const status = resolveAgentStatus("a:1", [runningCanExt], allRequiredActionPaths(), [
       "busA",
@@ -297,6 +327,15 @@ describe("action namespace discovery", () => {
     const mixed = [...allRequiredActionPaths("CAN"), canActionPath("list_codecs", "zz-legacy")];
     expect(resolveCanActionPrefix(mixed)).toBe("CAN");
     expect(resolveCanActionPrefix([...mixed].reverse())).toBe("CAN");
+  });
+
+  it("is stable in both orders when two namespaces both serve the full surface", () => {
+    // The literal dual-install case: every ranking tier ties, so only the final
+    // sort decides — and it must decide the same way whichever order the agent
+    // listed the paths in, or a refresh silently moves the transmits.
+    const dual = [...allRequiredActionPaths("can"), ...allRequiredActionPaths("CAN")];
+    expect(resolveCanActionPrefix(dual)).toBe("can");
+    expect(resolveCanActionPrefix([...dual].reverse())).toBe("can");
   });
 
   it("carries the resolved namespace on the ready status", () => {

@@ -53,6 +53,11 @@ export interface AgentStatus {
   /** Present only when `kind === "no-ready-buses"` and we know the action
    *  surface itself is missing methods (vs. having zero codecs configured). */
   missingMethods?: readonly string[];
+  /** Every CAN install running on this agent, set only when more than one is.
+   *  An action path names a namespace but never an install, so nothing here can
+   *  say which of them a transmit reaches — while `extension` (what Start/Stop
+   *  acts on) is necessarily just one of them. Surfaced to the operator. */
+  ambiguousInstalls?: readonly ExtensionEntry[];
 }
 
 export type TopLevelDisabledReason = "not-live" | "no-agents-connected";
@@ -114,14 +119,39 @@ export function resolveAgentStatus(
 ): AgentStatus {
   // Match any known install ID (marketplace canonical OR `local.*` aliases the
   // install-local CLI assigns). Different install methods, same extension.
-  const ext = extensions.find((e) => CAN_EXTENSION_INSTALL_IDS.has(e.id));
-  if (!ext) {
+  // Sorted by id because `extensions.list` order is not a contract, and the
+  // Stop control must not retarget itself between refreshes.
+  const installs = extensions
+    .filter((e) => CAN_EXTENSION_INSTALL_IDS.has(e.id))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  if (installs.length === 0) {
     return { agent, kind: "extension-missing" };
   }
-  if (ext.state !== "running") {
+
+  // A stopped install serves no actions, so preferring one over a running
+  // sibling would aim Start/Stop at an extension that is not the transmitter.
+  const running = installs.filter((e) => e.state === "running");
+  const ext = running[0] ?? installs[0]!;
+  if (running.length === 0) {
     return { agent, kind: "extension-stopped", extension: ext };
   }
 
+  const status = resolveRunningStatus(agent, ext, actionPaths, codecs);
+  // Two running installs both serve the full method set under their own
+  // namespace, and no field joins a namespace back to an install — so which
+  // one a transmit reaches is not knowable here. Reported rather than guessed,
+  // because Start/Stop can only target one of them.
+  return running.length > 1 ? { ...status, ambiguousInstalls: running } : status;
+}
+
+/** Status for an agent whose CAN extension is up. `ext` is the entry the
+ *  lifecycle controls act on. */
+function resolveRunningStatus(
+  agent: string,
+  ext: ExtensionEntry,
+  actionPaths: readonly string[],
+  codecs: readonly string[] | undefined,
+): AgentStatus {
   // Which namespace this agent serves the actions under. Discovered, not
   // assumed: the extension addresses them under its manifest name (`CAN`),
   // older builds used `can`, and an agent may be running either.
@@ -141,11 +171,7 @@ export function resolveAgentStatus(
   // Confirm every required action path is registered. A missing action path
   // here means the extension is the wrong version (or didn't finish
   // registering), not that buses are misconfigured.
-  const actionSet = new Set(actionPaths);
-  const missing: string[] = [];
-  for (const method of REQUIRED_CAN_METHODS) {
-    if (!actionSet.has(canActionPath(method, prefix))) missing.push(method);
-  }
+  const missing = missingCanMethods(actionPaths, prefix);
   if (missing.length > 0) {
     return { agent, kind: "no-ready-buses", extension: ext, missingMethods: missing };
   }
@@ -165,6 +191,17 @@ export function resolveAgentStatus(
     buses: codecs.map((name) => ({ name })),
     actionPrefix: prefix,
   };
+}
+
+/** Required methods the resolved namespace does not serve, in declaration
+ *  order. Empty means the full surface is present — the single gate for
+ *  issuing any action against that namespace, reads included. */
+export function missingCanMethods(
+  actionPaths: readonly string[],
+  prefix: string,
+): readonly string[] {
+  const actionSet = new Set(actionPaths);
+  return REQUIRED_CAN_METHODS.filter((m) => !actionSet.has(canActionPath(m, prefix)));
 }
 
 /** The namespace to address this agent's CAN actions under.

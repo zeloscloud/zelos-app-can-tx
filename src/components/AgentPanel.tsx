@@ -71,6 +71,20 @@ export function AgentPanel({
           )}
         </div>
 
+        {agent.ambiguousInstalls && (
+          <p
+            role="alert"
+            className="rounded border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+          >
+            {agent.ambiguousInstalls.length} CAN extensions are running on this agent (
+            {agent.ambiguousInstalls.map((e) => `${e.id} v${e.version}`).join(", ")}). Transmits go
+            to whichever one registered the actions, which the agent does not report — the
+            Start/Stop button above only targets <code>{agent.extension?.id}</code>. Stop the one
+            you are not using:{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5">zelos extensions stop &lt;id&gt;</code>
+          </p>
+        )}
+
         {agent.kind === "extension-missing" && (
           <p className="text-xs text-muted-foreground">
             Install the CAN extension from the marketplace, or run{" "}
