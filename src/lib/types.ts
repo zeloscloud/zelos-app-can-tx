@@ -27,11 +27,11 @@ export const CAN_EXTENSION_INSTALL_IDS: ReadonlySet<string> = new Set([
 ]);
 
 /** Bare method names exposed by the CAN extension. The on-wire surface is a
- *  single global namespace: every method is `can/<method>` and takes a
+ *  single global namespace: every method is `<prefix>/<method>` and takes a
  *  `codec` parameter (the bus name) to select which bus to operate on.
- *  Per-bus actions (`can/<bus>/<method>`) are NOT used — see ARCHITECTURE
+ *  Per-bus actions (`<prefix>/<bus>/<method>`) are NOT used — see ARCHITECTURE
  *  note in this file for the rationale. Use {@link canActionPath} to build
- *  a full path. */
+ *  a full path, with a prefix from {@link resolveCanActionPrefix}. */
 export const CAN_METHODS = {
   listCodecs: "list_codecs",
   getTxState: "get_tx_state",
@@ -45,6 +45,9 @@ export const CAN_METHODS = {
 } as const;
 
 export type CanMethodName = (typeof CAN_METHODS)[keyof typeof CAN_METHODS];
+
+/** Method names, as a set, for namespace resolution. */
+const KNOWN_CAN_METHODS: ReadonlySet<string> = new Set(Object.values(CAN_METHODS));
 
 /** Action paths every running CAN extension is expected to surface before the
  *  app considers it ready. `list_codecs` is the discovery action; the rest
@@ -63,9 +66,82 @@ export const REQUIRED_CAN_METHODS: readonly CanMethodName[] = [
   CAN_METHODS.stopPeriodic,
 ];
 
-/** Build the full action path for a given method. */
-export function canActionPath(method: CanMethodName | string): string {
-  return `can/${method}`;
+/** What the extension called its action namespace before it was aligned with
+ *  the manifest's user-visible name. Kept as the fallback so an older install
+ *  keeps working against a newer app. */
+export const LEGACY_CAN_ACTION_PREFIX = "can";
+
+/** Build the full action path for a given method under a resolved namespace.
+ *
+ *  The prefix is discovered per agent rather than hardcoded — see
+ *  {@link resolveCanActionPrefix}. Two agents on one workspace can be running
+ *  different extension versions, so the namespace is a property of the agent,
+ *  not of the app. */
+export function canActionPath(method: CanMethodName | string, prefix: string): string {
+  return `${prefix}/${method}`;
+}
+
+/** Find which namespace this agent serves the CAN actions under.
+ *
+ *  The extension addresses its actions under the name its manifest declares,
+ *  which is `CAN`; older builds used `can`. Rather than probing both, take the
+ *  answer from the agent's own action list: the namespace serving
+ *  `list_codecs` is the one to talk to. That keeps working through any future
+ *  rename, and through an agent running two CAN-ish extensions, without the
+ *  app having to know the history.
+ *
+ *  Returns `null` when no namespace on this agent serves the discovery action,
+ *  which the resolver reports as a missing-actions state rather than guessing.
+ */
+export function resolveCanActionPrefix(actionPaths: readonly string[]): string | null {
+  interface Candidate {
+    prefix: string;
+    hits: number;
+    /** Serves the discovery action, which is what makes it *this* extension
+     *  rather than something that happens to share a method name. */
+    discovery: boolean;
+  }
+
+  const scored = new Map<string, Candidate>();
+  for (const path of actionPaths) {
+    if (typeof path !== "string") continue;
+    const cut = path.lastIndexOf("/");
+    if (cut <= 0) continue;
+    const method = path.slice(cut + 1);
+    if (!KNOWN_CAN_METHODS.has(method)) continue;
+
+    // A single segment only. This extension serves one flat namespace, so a
+    // nested `CAN/can0/send_raw` is not a prefix of ours — and treating it as
+    // one would address a per-bus namespace while still passing `codec` in the
+    // params, i.e. aim a frame at one bus and deliver it under another's.
+    const prefix = path.slice(0, cut);
+    if (prefix.includes("/")) continue;
+
+    const found = scored.get(prefix) ?? { prefix, hits: 0, discovery: false };
+    found.hits += 1;
+    found.discovery ||= method === CAN_METHODS.listCodecs;
+    scored.set(prefix, found);
+  }
+  if (scored.size === 0) return null;
+
+  // Ordering, most decisive first:
+  //
+  //  1. serves `list_codecs` — the discovery action, and the one method no
+  //     unrelated extension has a reason to expose. Without this tier a
+  //     namespace sharing two generic names (`send_raw`, `send_message`) can
+  //     outscore the real CAN extension mid-registration, and the app then
+  //     polls a stranger's `list_codecs` every 5 s.
+  //  2. most known methods — a fuller surface is the better match.
+  //  3. a case-insensitive `can`, then sorted order, so the answer never
+  //     depends on the order the agent happened to list them in.
+  return [...scored.values()].sort((a, b) => {
+    if (a.discovery !== b.discovery) return a.discovery ? -1 : 1;
+    if (b.hits !== a.hits) return b.hits - a.hits;
+    const aCanon = a.prefix.toLowerCase() === LEGACY_CAN_ACTION_PREFIX ? 0 : 1;
+    const bCanon = b.prefix.toLowerCase() === LEGACY_CAN_ACTION_PREFIX ? 0 : 1;
+    if (aCanon !== bCanon) return aCanon - bCanon;
+    return a.prefix.localeCompare(b.prefix);
+  })[0]!.prefix;
 }
 
 // `can/list_codecs` returns `{ codecs: string[] }` — defined inline in

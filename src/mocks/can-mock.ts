@@ -7,10 +7,14 @@
  *  - Mock standalone mode can render all capability states (?mock=<scenario>)
  *  - A mock raw send/start/stop flow completes with no desktop app.
  *
- *  Action paths land as `can/<method>` to match the real agent — a single
+ *  Action paths land as `CAN/<method>` to match the real agent — a single
  *  global namespace, with the bus selected by the `codec` parameter on each
- *  call. Bus discovery goes through `can/list_codecs`. All wire fields are
- *  snake_case (mirroring the Python codec's idiom). */
+ *  call. Bus discovery goes through `CAN/list_codecs`. All wire fields are
+ *  snake_case (mirroring the Python codec's idiom).
+ *
+ *  The app never hardcodes this prefix; it reads it back from the action list
+ *  this mock returns, which is what makes an older `can/` install keep
+ *  working. See `resolveCanActionPrefix`. */
 
 import type { MockBridge } from "@zeloscloud/app-extension-sdk";
 
@@ -63,6 +67,10 @@ interface MockDbcParams {
 
 // Internal full-detail catalog. The mock serves the summary subset from
 // list_messages and the full DbcMessage from describe_message.
+/** Namespace this mock serves actions under, matching the real extension's
+ *  manifest name. Set to `can` to rehearse an older install. */
+const MOCK_ACTION_PREFIX = "CAN";
+
 const DEMO_DBC: { dbc_name: string; messages: DbcMessage[] } = {
   dbc_name: "demo.dbc",
   messages: [
@@ -288,7 +296,8 @@ function buildActionsList(agentMap: Map<string, SimAgent>) {
       continue;
     }
     // Single global namespace — one set of actions, regardless of bus count.
-    out[addr] = REQUIRED_CAN_METHODS.map((m) => `can/${m}`);
+    // Served under the manifest name, as the real extension does.
+    out[addr] = REQUIRED_CAN_METHODS.map((m) => `${MOCK_ACTION_PREFIX}/${m}`);
   }
   return out;
 }
@@ -322,11 +331,14 @@ async function handleActionExecute(agentMap: Map<string, SimAgent>, params: unkn
   const agent = agentMap.get(agentAddr);
   if (!agent) throw new Error(`mock-host: unknown agent "${agentAddr}"`);
 
-  // Action paths are bare `can/<method>` — no bus segment.
-  if (!action.startsWith("can/")) {
-    throw new Error(`mock-host: action path doesn't start with can/: ${action}`);
+  // Action paths are bare `<prefix>/<method>` — no bus segment. The prefix is
+  // asserted rather than stripped loosely: the app resolves it from the action
+  // list, and a mismatch here means that resolution regressed.
+  const expected = `${MOCK_ACTION_PREFIX}/`;
+  if (!action.startsWith(expected)) {
+    throw new Error(`mock-host: action path doesn't start with ${expected}: ${action}`);
   }
-  const methodName = action.slice("can/".length);
+  const methodName = action.slice(expected.length);
 
   // Discovery action — no codec parameter.
   if (methodName === CAN_METHODS.listCodecs) {

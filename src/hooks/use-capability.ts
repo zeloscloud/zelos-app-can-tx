@@ -14,9 +14,9 @@ import { actions, extensions, type BridgeTransport } from "@zeloscloud/app-exten
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import { CAN_EXTENSION_INSTALL_IDS } from "../lib/types";
+import { CAN_EXTENSION_INSTALL_IDS, resolveCanActionPrefix } from "../lib/types";
 import { listCodecs } from "../lib/can-bridge";
-import { discoverCanTx, type CanTxDiscovery } from "../lib/capability";
+import { discoverCanTx, missingCanMethods, type CanTxDiscovery } from "../lib/capability";
 
 export interface UseCanDiscoveryInput {
   bridge: BridgeTransport | null;
@@ -46,25 +46,40 @@ export function useCanDiscovery(input: UseCanDiscoveryInput): {
     refetchInterval: enabled ? 5000 : false,
   });
 
-  // Only ask `can/list_codecs` from agents that look like they're running the
-  // CAN extension — calling it against an agent that doesn't have the
-  // extension produces a noisy "unknown action" error per poll cycle.
-  const codecAgents = useMemo<string[]>(() => {
+  // Only ask for codecs from agents that look like they're running the CAN
+  // extension — calling it against an agent that doesn't have the extension
+  // produces a noisy "unknown action" error per poll cycle.
+  //
+  // The namespace comes from the agent's own action list rather than a
+  // constant: this call is itself part of discovery, so it cannot wait for the
+  // resolver downstream to name the prefix. An agent whose actions have not
+  // arrived yet, or whose namespace serves less than the full CAN surface, is
+  // skipped — the resolver reports that as missing actions rather than us
+  // polling a namespace we would refuse to write to.
+  const codecTargets = useMemo<{ agent: string; prefix: string }[]>(() => {
     const byAgent = extensionsQuery.data;
-    if (!byAgent) return [];
-    const result: string[] = [];
+    const actionsByAgent = actionsQuery.data;
+    if (!byAgent || !actionsByAgent) return [];
+    const result: { agent: string; prefix: string }[] = [];
     for (const [agent, exts] of Object.entries(byAgent)) {
-      if (exts.some((e) => CAN_EXTENSION_INSTALL_IDS.has(e.id) && e.state === "running")) {
-        result.push(agent);
-      }
+      if (!exts.some((e) => CAN_EXTENSION_INSTALL_IDS.has(e.id) && e.state === "running")) continue;
+      const paths = actionsByAgent[agent] ?? [];
+      const prefix = resolveCanActionPrefix(paths);
+      // Same completeness gate the writes use, so a partial namespace is never
+      // polled every 5s.
+      if (prefix === null || missingCanMethods(paths, prefix).length > 0) continue;
+      result.push({ agent, prefix });
     }
-    return result.sort();
-  }, [extensionsQuery.data]);
+    return result.sort((a, b) => a.agent.localeCompare(b.agent));
+  }, [extensionsQuery.data, actionsQuery.data]);
 
   const codecQueries = useQueries({
-    queries: codecAgents.map((agent) => ({
-      queryKey: ["can-list-codecs", agent],
-      queryFn: async () => listCodecs(input.bridge!, agent),
+    queries: codecTargets.map(({ agent, prefix }) => ({
+      // The prefix is part of the key: an extension upgraded under a running
+      // app changes namespace, and the cached codec list from the old one is
+      // not an answer about the new one.
+      queryKey: ["can-list-codecs", agent, prefix],
+      queryFn: async () => listCodecs(input.bridge!, agent, prefix),
       enabled,
       staleTime: 2000,
       refetchInterval: enabled ? 5000 : false,
@@ -73,11 +88,11 @@ export function useCanDiscovery(input: UseCanDiscoveryInput): {
 
   const codecsByAgent = useMemo<Record<string, string[] | undefined>>(() => {
     const out: Record<string, string[] | undefined> = {};
-    codecAgents.forEach((agent, i) => {
+    codecTargets.forEach(({ agent }, i) => {
       out[agent] = codecQueries[i]?.data?.codecs;
     });
     return out;
-  }, [codecAgents, codecQueries]);
+  }, [codecTargets, codecQueries]);
 
   const discovery = useMemo(
     () =>
