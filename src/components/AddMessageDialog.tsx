@@ -33,7 +33,12 @@ import {
   type TransmitMode,
   type TransmitRow,
 } from "@/lib/transmit-store";
-import type { DbcMessage, DbcMessageSummary } from "@/lib/types";
+import {
+  findMessageByAddress,
+  messageAddress,
+  type DbcMessage,
+  type DbcMessageSummary,
+} from "@/lib/types";
 
 export interface AddMessageDialogProps {
   open: boolean;
@@ -168,7 +173,15 @@ export function AddMessageDialog({
   // on the agent side.
   React.useEffect(() => {
     if (!selectedDbcMessage) return;
-    if (editRow && selectedDbcMessage.name === editRow.message) return;
+    // Match on address, with a name fallback so a row saved before keys
+    // existed is still recognised as "the message this row already holds".
+    if (
+      editRow &&
+      (messageAddress(selectedDbcMessage) === editRow.message ||
+        selectedDbcMessage.name === editRow.message)
+    ) {
+      return;
+    }
     const next: Record<string, string> = {};
     for (const sig of selectedDbcMessage.signals) {
       if (sig.mux_indicator) continue;
@@ -296,6 +309,7 @@ export function AddMessageDialog({
         message: dbcMessage,
         mux: dbcMux.trim(),
         signals,
+        ...(selectedDbcMessage?.name != null && { dbc_message_name: selectedDbcMessage.name }),
         ...(selectedDbcMessage?.can_id != null && { dbc_can_id: selectedDbcMessage.can_id }),
         ...(selectedDbcMessage?.dlc != null && { dbc_dlc: selectedDbcMessage.dlc }),
         ...(Object.keys(valueTables).length > 0 && { dbc_value_tables: valueTables }),
@@ -898,8 +912,9 @@ function DbcMessageCombobox({
   onValueChange,
 }: {
   messages: readonly DbcMessageSummary[];
+  /** Selected address — a key on a newer extension, a name on an older one. */
   value: string;
-  onValueChange: (name: string) => void;
+  onValueChange: (address: string) => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -914,7 +929,19 @@ function DbcMessageCombobox({
     });
   }, [messages, query]);
 
-  const selected = messages.find((m) => m.name === value);
+  // Names carried by more than one definition. Those rows show their DBC file
+  // so two identically-named entries are told apart by more than their id.
+  const duplicated = React.useMemo(() => {
+    const seen = new Set<string>();
+    const dupes = new Set<string>();
+    for (const m of messages) {
+      if (seen.has(m.name)) dupes.add(m.name);
+      seen.add(m.name);
+    }
+    return dupes;
+  }, [messages]);
+
+  const selected = findMessageByAddress(messages, value);
 
   return (
     <PopoverPrimitive.Root
@@ -934,6 +961,9 @@ function DbcMessageCombobox({
               <span className="font-medium">{selected.name}</span>
               <span className="ml-2 text-muted-foreground">
                 · 0x{selected.can_id.toString(16)} · {selected.dlc}B
+                {duplicated.has(selected.name) && selected.database
+                  ? ` · ${selected.database}`
+                  : ""}
               </span>
             </span>
           ) : (
@@ -969,13 +999,14 @@ function DbcMessageCombobox({
               <li className="px-3 py-2 text-xs text-muted-foreground">No matches</li>
             ) : (
               filtered.map((m) => {
-                const isActive = m.name === value;
+                const address = messageAddress(m);
+                const isActive = address === value;
                 return (
-                  <li key={m.name}>
+                  <li key={address}>
                     <button
                       type="button"
                       onClick={() => {
-                        onValueChange(m.name);
+                        onValueChange(address);
                         setOpen(false);
                       }}
                       className={
@@ -983,7 +1014,12 @@ function DbcMessageCombobox({
                         (isActive ? "bg-accent/50 font-medium" : "")
                       }
                     >
-                      <span className="truncate">{m.name}</span>
+                      <span className="truncate">
+                        {m.name}
+                        {duplicated.has(m.name) && m.database ? (
+                          <span className="ml-2 text-muted-foreground">{m.database}</span>
+                        ) : null}
+                      </span>
                       <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                         0x{m.can_id.toString(16)} · {m.dlc}B
                       </span>

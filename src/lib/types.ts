@@ -227,17 +227,44 @@ export interface DbcSignal {
  *  populate the message picker without pulling per-signal metadata across
  *  the wire. Picking a message fires `describe_message` for the full detail. */
 export interface DbcMessageSummary {
+  /** Address of ONE definition: `{can_id:04x|08x}_{name}`, the trace event
+   *  name. Unique across the bus, so two DBCs defining one name at different
+   *  ids stay separately addressable. Absent on extensions that predate it,
+   *  which address messages by name only — see {@link messageAddress}. */
+  key?: string;
   name: string;
   can_id: number;
   is_extended: boolean;
   dlc: number;
   cycle_time_ms?: number;
+  /** DBC file this definition came from. Disambiguates the picker when one
+   *  name appears at two ids. */
+  database?: string;
 }
 
 /** Full per-message detail returned by `describe_message` — extends the
  *  summary with the signal array. */
 export interface DbcMessage extends DbcMessageSummary {
   signals: DbcSignal[];
+}
+
+/** What every `message` action parameter carries: the key when the extension
+ *  publishes one, else the name. `send_message` and friends accept either, so
+ *  a key-less (older) extension is addressed exactly as before, and a newer
+ *  one never has to resolve an ambiguous name. */
+export function messageAddress(m: DbcMessageSummary): string {
+  return m.key ?? m.name;
+}
+
+/** Catalog entry a stored address points at. The name fallback resolves rows
+ *  saved before keys existed against a catalog that now has them. */
+export function findMessageByAddress<T extends DbcMessageSummary>(
+  messages: readonly T[],
+  address: string,
+): T | undefined {
+  return (
+    messages.find((m) => messageAddress(m) === address) ?? messages.find((m) => m.name === address)
+  );
 }
 
 export interface DbcCatalog {

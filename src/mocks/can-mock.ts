@@ -75,6 +75,8 @@ const DEMO_DBC: { dbc_name: string; messages: DbcMessage[] } = {
   dbc_name: "demo.dbc",
   messages: [
     {
+      key: "0100_VehicleStatus",
+      database: "demo.dbc",
       name: "VehicleStatus",
       can_id: 0x100,
       is_extended: false,
@@ -104,6 +106,8 @@ const DEMO_DBC: { dbc_name: string; messages: DbcMessage[] } = {
       ],
     },
     {
+      key: "0200_BatteryState",
+      database: "demo.dbc",
       name: "BatteryState",
       can_id: 0x200,
       is_extended: false,
@@ -132,8 +136,55 @@ const DEMO_DBC: { dbc_name: string; messages: DbcMessage[] } = {
         },
       ],
     },
+    // Second DBC on the same bus redefines VehicleStatus at another id. Both
+    // survive the merge, so the name alone no longer addresses a definition —
+    // this is the case the picker's keys exist for.
+    {
+      key: "0334_VehicleStatus",
+      database: "body.dbc",
+      name: "VehicleStatus",
+      can_id: 0x334,
+      is_extended: false,
+      dlc: 4,
+      cycle_time_ms: 200,
+      signals: [
+        {
+          name: "WheelSpeed",
+          start_bit: 0,
+          length: 16,
+          byte_order: "little",
+          is_signed: false,
+          scale: 0.01,
+          offset: 0,
+          unit: "km/h",
+        },
+        {
+          name: "DoorsOpen",
+          start_bit: 16,
+          length: 4,
+          byte_order: "little",
+          is_signed: false,
+          scale: 1,
+          offset: 0,
+        },
+      ],
+    },
   ],
 };
+
+/** Resolve a `message` action parameter the way the extension does: a key
+ *  matches one definition exactly; a bare name only when it is unique. */
+function resolveMockMessage(message: unknown): { msg?: DbcMessage; reason?: string } {
+  const byKey = DEMO_DBC.messages.find((m) => m.key === message);
+  if (byKey) return { msg: byKey };
+  const byName = DEMO_DBC.messages.filter((m) => m.name === message);
+  if (byName.length === 1) return { msg: byName[0]! };
+  if (byName.length > 1) {
+    const keys = byName.map((m) => m.key).join(", ");
+    return { reason: `mock-host: "${message}" is ambiguous — address it by key: ${keys}` };
+  }
+  return { reason: `mock-host: unknown DBC message "${message}"` };
+}
 
 function buildBus(name: string): SimBus {
   return {
@@ -365,23 +416,21 @@ async function handleActionExecute(agentMap: Map<string, SimAgent>, params: unkn
           dbc_name: DEMO_DBC.dbc_name,
           // Strip signals — list_messages is the lightweight summary call.
           messages: DEMO_DBC.messages.map((m) => ({
+            key: m.key,
             name: m.name,
             can_id: m.can_id,
             is_extended: m.is_extended,
             dlc: m.dlc,
             ...(m.cycle_time_ms != null && { cycle_time_ms: m.cycle_time_ms }),
+            database: m.database,
           })),
         },
       };
     case CAN_METHODS.describeMessage: {
-      const name = (actionParams as { message?: string } | undefined)?.message;
-      const msg = DEMO_DBC.messages.find((m) => m.name === name);
-      if (!msg) {
-        return {
-          status: "fail",
-          result: { reason: `mock-host: unknown DBC message "${name}"` },
-        };
-      }
+      const { msg, reason } = resolveMockMessage(
+        (actionParams as { message?: string } | undefined)?.message,
+      );
+      if (!msg) return { status: "fail", result: { reason } };
       return {
         status: "pass",
         result: { bus: codec, dbc_name: DEMO_DBC.dbc_name, message: msg },
@@ -394,8 +443,12 @@ async function handleActionExecute(agentMap: Map<string, SimAgent>, params: unkn
         status: "pass",
         result: startPeriodicRawSim(bus, actionParams as StartPeriodicRawParams),
       };
-    case CAN_METHODS.sendMessage:
-      return { status: "pass", result: null };
+    case CAN_METHODS.sendMessage: {
+      const { msg, reason } = resolveMockMessage(
+        (actionParams as { message?: string } | undefined)?.message,
+      );
+      return msg ? { status: "pass", result: null } : { status: "fail", result: { reason } };
+    }
     case CAN_METHODS.startPeriodicMessage:
       return {
         status: "pass",
@@ -434,8 +487,8 @@ function startPeriodicRawSim(bus: SimBus, params: StartPeriodicRawParams) {
 }
 
 function startPeriodicMessageSim(bus: SimBus, params: MockDbcParams) {
-  const msg = DEMO_DBC.messages.find((m) => m.name === params.message);
-  if (!msg) throw new Error(`mock-host: unknown DBC message "${params.message}"`);
+  const { msg, reason } = resolveMockMessage(params.message);
+  if (!msg) throw new Error(reason);
   const mux = params.mux ?? null;
   const task_id = taskIdFor(`0x${msg.can_id.toString(16)}`, msg.is_extended, mux ?? "dbc");
   const replaced = bus.periodics.has(task_id);
