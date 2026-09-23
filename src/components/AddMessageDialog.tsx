@@ -42,6 +42,8 @@ export interface AddMessageDialogProps {
   /** Agent + bus are implicit from which bus subcard triggered the dialog —
    *  no in-dialog picker for either. */
   agentAddress: string;
+  /** Action namespace for `agentAddress`, from the ready status. */
+  actionPrefix: string;
   bus: string;
   /** When set, dialog opens in edit mode — fields seeded from this row,
    *  Save button becomes "Save changes", onSave is called with editRow.id. */
@@ -54,6 +56,7 @@ export function AddMessageDialog({
   onOpenChange,
   bridge,
   agentAddress,
+  actionPrefix,
   bus,
   editRow,
   onSave,
@@ -126,19 +129,26 @@ export function AddMessageDialog({
   // change invalidates both tiers. The hash rides the 1 Hz bus snapshot
   // poll that's already running, so there's no extra agent traffic. When
   // the hash is unknown (older codec) we fall back to a 30 s stale-time.
-  const snapshotQuery = useBusSnapshot(bridge, agentAddress, bus);
+  const snapshotQuery = useBusSnapshot(bridge, agentAddress, actionPrefix, bus);
   const dbcHash = snapshotQuery.data?.bus?.dbc?.hash ?? null;
 
   const catalogQuery = useQuery({
-    queryKey: ["can-list-messages", agentAddress, bus, dbcHash ?? "no-hash"],
-    queryFn: async () => listMessages(bridge, agentAddress, bus),
+    queryKey: ["can-list-messages", agentAddress, actionPrefix, bus, dbcHash ?? "no-hash"],
+    queryFn: async () => listMessages(bridge, agentAddress, actionPrefix, bus),
     enabled: open && mode === "dbc" && !!bus,
     staleTime: dbcHash ? Infinity : 30_000,
   });
 
   const describeQuery = useQuery({
-    queryKey: ["can-describe-message", agentAddress, bus, dbcMessage, dbcHash ?? "no-hash"],
-    queryFn: async () => describeMessage(bridge, agentAddress, bus, dbcMessage),
+    queryKey: [
+      "can-describe-message",
+      agentAddress,
+      actionPrefix,
+      bus,
+      dbcMessage,
+      dbcHash ?? "no-hash",
+    ],
+    queryFn: async () => describeMessage(bridge, agentAddress, actionPrefix, bus, dbcMessage),
     enabled: open && mode === "dbc" && !!bus && !!dbcMessage,
     staleTime: dbcHash ? Infinity : 30_000,
   });

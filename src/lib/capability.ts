@@ -16,7 +16,13 @@
 
 import type { ExtensionEntry } from "@zeloscloud/app-extension-sdk";
 
-import { canActionPath, CAN_EXTENSION_INSTALL_IDS, REQUIRED_CAN_METHODS } from "./types";
+import {
+  canActionPath,
+  CAN_EXTENSION_INSTALL_IDS,
+  LEGACY_CAN_ACTION_PREFIX,
+  REQUIRED_CAN_METHODS,
+  resolveCanActionPrefix,
+} from "./types";
 
 export type AgentStatusKind =
   | "ready"
@@ -39,9 +45,19 @@ export interface AgentStatus {
   extension?: ExtensionEntry;
   /** Present only when `kind === "ready"`. */
   buses?: readonly ReadyBus[];
+  /** Namespace this agent serves the CAN actions under, discovered from its
+   *  own action list. Present only when `kind === "ready"`, which is the only
+   *  state in which a caller may issue an action. Pass it to
+   *  {@link canActionPath} rather than assuming a casing. */
+  actionPrefix?: string;
   /** Present only when `kind === "no-ready-buses"` and we know the action
    *  surface itself is missing methods (vs. having zero codecs configured). */
   missingMethods?: readonly string[];
+  /** Every CAN install running on this agent, set only when more than one is.
+   *  An action path names a namespace but never an install, so nothing here can
+   *  say which of them a transmit reaches — while `extension` (what Start/Stop
+   *  acts on) is necessarily just one of them. Surfaced to the operator. */
+  ambiguousInstalls?: readonly ExtensionEntry[];
 }
 
 export type TopLevelDisabledReason = "not-live" | "no-agents-connected";
@@ -103,22 +119,59 @@ export function resolveAgentStatus(
 ): AgentStatus {
   // Match any known install ID (marketplace canonical OR `local.*` aliases the
   // install-local CLI assigns). Different install methods, same extension.
-  const ext = extensions.find((e) => CAN_EXTENSION_INSTALL_IDS.has(e.id));
-  if (!ext) {
+  // Sorted by id because `extensions.list` order is not a contract, and the
+  // Stop control must not retarget itself between refreshes.
+  const installs = extensions
+    .filter((e) => CAN_EXTENSION_INSTALL_IDS.has(e.id))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  if (installs.length === 0) {
     return { agent, kind: "extension-missing" };
   }
-  if (ext.state !== "running") {
+
+  // A stopped install serves no actions, so preferring one over a running
+  // sibling would aim Start/Stop at an extension that is not the transmitter.
+  const running = installs.filter((e) => e.state === "running");
+  const ext = running[0] ?? installs[0]!;
+  if (running.length === 0) {
     return { agent, kind: "extension-stopped", extension: ext };
+  }
+
+  const status = resolveRunningStatus(agent, ext, actionPaths, codecs);
+  // Two running installs both serve the full method set under their own
+  // namespace, and no field joins a namespace back to an install — so which
+  // one a transmit reaches is not knowable here. Reported rather than guessed,
+  // because Start/Stop can only target one of them.
+  return running.length > 1 ? { ...status, ambiguousInstalls: running } : status;
+}
+
+/** Status for an agent whose CAN extension is up. `ext` is the entry the
+ *  lifecycle controls act on. */
+function resolveRunningStatus(
+  agent: string,
+  ext: ExtensionEntry,
+  actionPaths: readonly string[],
+  codecs: readonly string[] | undefined,
+): AgentStatus {
+  // Which namespace this agent serves the actions under. Discovered, not
+  // assumed: the extension addresses them under its manifest name (`CAN`),
+  // older builds used `can`, and an agent may be running either.
+  const prefix = resolveCanActionPrefix(actionPaths);
+  if (prefix === null) {
+    // No namespace here serves the discovery action, so every method is
+    // missing. Reported the same way a partial surface is, rather than
+    // guessing a prefix and reporting each call as an unknown action.
+    return {
+      agent,
+      kind: "no-ready-buses",
+      extension: ext,
+      missingMethods: [...REQUIRED_CAN_METHODS],
+    };
   }
 
   // Confirm every required action path is registered. A missing action path
   // here means the extension is the wrong version (or didn't finish
   // registering), not that buses are misconfigured.
-  const actionSet = new Set(actionPaths);
-  const missing: string[] = [];
-  for (const method of REQUIRED_CAN_METHODS) {
-    if (!actionSet.has(canActionPath(method))) missing.push(method);
-  }
+  const missing = missingCanMethods(actionPaths, prefix);
   if (missing.length > 0) {
     return { agent, kind: "no-ready-buses", extension: ext, missingMethods: missing };
   }
@@ -136,7 +189,30 @@ export function resolveAgentStatus(
     kind: "ready",
     extension: ext,
     buses: codecs.map((name) => ({ name })),
+    actionPrefix: prefix,
   };
+}
+
+/** Required methods the resolved namespace does not serve, in declaration
+ *  order. Empty means the full surface is present — the single gate for
+ *  issuing any action against that namespace, reads included. */
+export function missingCanMethods(
+  actionPaths: readonly string[],
+  prefix: string,
+): readonly string[] {
+  const actionSet = new Set(actionPaths);
+  return REQUIRED_CAN_METHODS.filter((m) => !actionSet.has(canActionPath(m, prefix)));
+}
+
+/** The namespace to address this agent's CAN actions under.
+ *
+ *  `actionPrefix` is set on every `ready` status, so the fallback is
+ *  unreachable today — it exists because `AgentStatus` is a flat interface the
+ *  compiler cannot narrow on `kind`. Falling back to the pre-rename prefix
+ *  keeps an older install working rather than sending an empty namespace.
+ */
+export function agentActionPrefix(status: AgentStatus): string {
+  return status.actionPrefix ?? LEGACY_CAN_ACTION_PREFIX;
 }
 
 /** Short text label for the agent's status, used in chips + tooltips. */

@@ -11,6 +11,7 @@ import { AgentPanel } from "@/components/AgentPanel";
 import { CapabilityBanner } from "@/components/CapabilityBanner";
 import { Button } from "@/components/ui/button";
 import { useCanDiscovery } from "@/hooks/use-capability";
+import { agentActionPrefix } from "@/lib/capability";
 import { useTransmitList } from "@/hooks/use-transmit-list";
 import { copyToClipboard } from "@/lib/clipboard";
 import type { NewTransmitRow, TransmitRow } from "@/lib/transmit-store";
@@ -78,7 +79,9 @@ function DiscoveryView({
     const bus = dialogState.mode === "add" ? dialogState.bus : dialogState.row.bus;
     const found = discovery.agents.find((a) => a.agent === address);
     if (!found || found.kind !== "ready" || !found.buses?.length) return null;
-    return { agentAddress: address, bus };
+    // The namespace comes from the same ready status that gates the dialog, so
+    // it can never disagree with the agent the dialog is about.
+    return { agentAddress: address, bus, actionPrefix: agentActionPrefix(found) };
   }, [dialogState, discovery]);
 
   const handleCopyLogs = React.useCallback(async () => {
@@ -163,6 +166,7 @@ function DiscoveryView({
           }}
           bridge={bridge}
           agentAddress={dialogTarget.agentAddress}
+          actionPrefix={dialogTarget.actionPrefix}
           bus={dialogTarget.bus}
           editRow={dialogState?.mode === "edit" ? dialogState.row : null}
           onSave={handleSave}
