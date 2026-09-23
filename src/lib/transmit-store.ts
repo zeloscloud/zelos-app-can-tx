@@ -29,12 +29,18 @@ export interface TransmitRow {
   is_fd?: boolean;
 
   // ─── DBC fields (mode === "dbc") ─────────────────────────────────────
+  /** Address passed to every send / encode / periodic call: the catalog
+   *  entry's `key` when the extension publishes one, else its name. Rows
+   *  saved before keys existed hold a bare name, which stays a valid
+   *  address. */
   message?: string;
   /** Empty string when not multiplexed; integer or label otherwise. */
   mux?: string;
   signals?: Record<string, unknown>;
   /** Captured from the DBC catalog at dialog save time so the table can
-   *  render ID / DLC without re-querying the catalog per row. */
+   *  render name / ID / DLC without re-querying the catalog per row. The
+   *  name is what the table shows, since `message` may be a key. */
+  dbc_message_name?: string;
   dbc_can_id?: number;
   dbc_dlc?: number;
   /** Per-signal value tables (signal_name → { "0": "INIT", ... }), captured

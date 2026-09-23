@@ -712,7 +712,7 @@ function renderRowCells(row: TransmitRow): {
   return {
     idDisplay,
     dlcDisplay,
-    messageDisplay: row.message ?? "—",
+    messageDisplay: row.dbc_message_name ?? row.message ?? "—",
     dataNode:
       sigs.length === 0 ? (
         "—"
