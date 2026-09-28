@@ -1,5 +1,5 @@
 name = "CAN Transmit"
-version = "0.1.0"
+version = "0.1.16"
 description = "Transmit CAN frames (raw + DBC, one-shot + periodic) through the Zelos CAN agent extension."
 author = "Zelos"
 repository = "https://github.com/zeloscloud/zelos-app-can-tx"
