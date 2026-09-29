@@ -3,6 +3,8 @@ version = "0.1.16"
 description = "Transmit CAN frames (raw + DBC, one-shot + periodic) through the Zelos CAN agent extension."
 author = "Zelos"
 repository = "https://github.com/zeloscloud/zelos-app-can-tx"
+keywords = ["can", "can-bus", "can-fd", "transmit", "send", "tx", "dbc", "periodic", "automotive"]
+categories = ["Automotive", "Networking"]
 icon = "assets/icon.png"
 readme = "README.md"
 
