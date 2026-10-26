@@ -8,4 +8,4 @@ agent extension.
 - ✏️ Compose a frame (raw bytes or DBC message + signals)
 - 📤 **Send** one-shot or 🔁 **Start** a periodic
 - ⏹️ **Stop** or 🗑️ delete the row
-- 📊 Watch live tx counters per bus
+- 📊 Watch live receive counters and transmit errors per bus
