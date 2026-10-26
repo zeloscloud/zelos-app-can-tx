@@ -2,98 +2,75 @@
 
 ## Prerequisites
 
-- [Zelos CLI](https://docs.zeloscloud.io/cli)
-- Node.js 20.x (see `.nvmrc`)
+- [Zelos](https://zeloscloud.io) 26.0.10 or later
+- [Zelos CLI](https://docs.zeloscloud.io/reference/cli/) 0.1.11 or later
 - [just](https://github.com/casey/just)
+- Node.js 24 LTS (see `web/.nvmrc`)
+
+## Layout
+
+`extension.toml` describes everything the extension contributes. This extension contributes a
+tab:
+
+| Part | Files | Manifest |
+| ---- | ----- | -------- |
+| Tab | `web/src/tab/` | `[app] tab` |
+
+The web project builds the tab document into `dist/` at the project root with `just build`
+(`npm run build`). `.gitignore` keeps `dist/` out of the repository, so a fresh clone has none
+until its first build.
+
+| Path | Contents |
+| ---- | -------- |
+| `web/src/tab/` | The tab document, its entry point and `App` |
+| `web/src/components/` | The agent cards, the add and edit dialog, and the shadcn/ui components |
+| `web/src/hooks/` | Discovery, bus snapshot and transmit row hooks |
+| `web/src/lib/` | The CAN action calls, their wire types, discovery and the transmit row store |
+| `web/src/mocks/` | The mock CAN extension that `just dev` runs against |
 
 ## Commands
 
-| Command                | Description                                 |
-| ---------------------- | ------------------------------------------- |
-| `just install`         | Install dependencies                        |
-| `just dev`             | Start Vite development server               |
-| `just test`            | Run tests                                   |
-| `just test-watch`      | Run tests in watch mode                     |
-| `just format`          | Format code with Prettier                   |
-| `just check`           | Lint with ESLint and type-check             |
-| `just build`           | Build for production                        |
-| `just verify-dist`     | Rebuild and verify committed build output   |
-| `just package`         | Build and package for Zelos marketplace     |
-| `just release VERSION` | Bump version, check, build, commit, and tag |
-| `just clean`           | Remove build artifacts                      |
+| Command                | Description                                         |
+| ---------------------- | --------------------------------------------------- |
+| `just install`         | Install dependencies                                |
+| `just format`          | Format code with Prettier                           |
+| `just check`           | Check formatting, lint (ESLint), type-check         |
+| `just test`            | Run tests (Vitest)                                  |
+| `just build`           | Build the web project into `dist/`                  |
+| `just package`         | Build and package for the Zelos marketplace         |
+| `just release VERSION` | Bump version, check, test, build, commit, tag       |
+| `just clean`           | Remove build output, caches and packages            |
+| `just dev`             | Start the Vite dev server against a mock host       |
+| `just watch`           | Rebuild `dist/` on every change                     |
+| `just test-watch`      | Run the tests in watch mode                         |
 
-## Development Modes
+`just --list` shows every recipe. Install [pre-commit](https://pre-commit.com) yourself and run
+`pre-commit install` to run the hooks in `.pre-commit-config.yaml` on each commit.
 
-### Standalone
-
-```bash
-just dev
-```
-
-Starts Vite with the SDK's `MockBridge`. The SDK renders a Development Mode banner with theme toggles automatically.
-
-The SDK provider applies Zelos light/dark theme classes and design tokens to the document, so the extension matches the host app out of the box.
-
-For bridge troubleshooting, run the app with DevTools open and set:
-
-```js
-localStorage.setItem("ZELOS_BRIDGE_DEBUG", "1");
-```
-
-Then reload to enable `[zelos-bridge]` debug logs in the console.
-
-### Integrated (desktop app)
+## Run it in Zelos
 
 ```bash
+just build
 zelos extensions install-local .
 ```
 
-Freshly created projects already include a committed `dist/`, so `install-local` works immediately.
-Once installed, the extension appears in the app rail. Click to open.
+A local install runs from your project directory, so you do not install again after a code
+change:
 
-For iterative work, use `npx vite build --watch` in a separate terminal. The desktop app serves local installs from your source tree via `.dev_source`, so rebuilt assets are picked up on reload — no need to re-run `install-local`.
+- Tab: after a rebuild, reload the tab. Keep `just watch` running to rebuild on every save, and
+  use `just dev` to work on it in the browser against the mock host of the SDK.
+- `extension.toml`: run `zelos extensions install-local .` again.
 
-In embedded mode, the SDK performs the host handshake automatically when the iframe loads.
-Use `useZelosBridge()` to observe `loading`, `ready`, and `error` states. Until the bridge
-is ready, `useExtensionInfo()`, `useTheme()`, and `useWorkspace()` may return `null`.
+The tab sends frames through the
+[CAN extension](https://github.com/zeloscloud/zelos-extension-can), so install it on an agent
+of a live workspace and configure a bus.
 
-Embedded extensions run under the `zelos-app://` Content Security Policy. In v1,
-`connect-src` does not allow arbitrary external `http:`/`https:` requests, so network-heavy
-features are easiest to prototype in standalone mode with `MockBridge`.
+## Work in the browser
 
-The desktop shell keeps only a bounded set of app iframes mounted at once. Background app
-tabs can be evicted and remounted later, so do not assume a single long-lived React mount
-across every tab switch.
-
-### How `.dev_source` works
-
-When you run `zelos extensions install-local .`, the CLI writes a `.dev_source` file pointing to your project directory. The desktop app reads this on every request (no caching for local extensions), so changes to `dist/` are picked up immediately after a page reload.
-
-## Bridge
-
-The SDK bridge connects the extension to the host app, providing theme and workspace state.
-In the desktop app, the handshake is part of normal startup for embedded extensions. In
-standalone development, the SDK uses `MockBridge` instead of the host iframe bridge.
-
-Available hooks:
-
-- `useZelosBridge()` — connection status (`loading`, `ready`, `error`)
-- `useExtensionInfo()` — extension ID, name, version
-- `useTheme()` — current theme preference and resolved dark/light mode
-- `useWorkspace()` — current workspace info (can be `null`)
-
-Theme CSS tokens (`--background`, `--foreground`, `--primary`, etc.) are injected into the document root automatically and match the host app's shadcn/ui token set.
-
-## Testing
-
-Tests use [Vitest](https://vitest.dev/) with [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/).
-
-```bash
-just test        # Run once
-just test-watch  # Watch mode
-```
-
-Test files live alongside source files as `*.test.tsx` or `*.test.ts`.
+`just dev` serves the tab at `http://localhost:5173/tab/` against the mock host of the SDK and
+a mock CAN extension with two buses and a demo DBC. Add `?mock=<state>` to the URL to see
+another state: `can-extension-missing`, `can-extension-stopped`, `no-ready-buses` or
+`multi-agent`.
 
 ## Packaging
 
@@ -101,26 +78,16 @@ Test files live alongside source files as `*.test.tsx` or `*.test.ts`.
 just package
 ```
 
-Rebuilds `dist/` and creates `{name}-{version}.tar.gz` next to `extension.toml`.
-
-To verify that the committed artifact matches source before you push or tag a release:
-
-```bash
-just verify-dist
-```
+The archive lands next to `extension.toml` as `<name>-<version>.tar.gz`, where `<name>` is the
+manifest name in lowercase with every other run of characters turned into one hyphen. It holds
+`extension.toml`, the README, the icon and the paths listed in `[package] paths`: `dist/`.
 
 ## Release
 
 ```bash
 just release 1.0.0
+git push --follow-tags
 ```
 
-This bumps the version in `extension.toml` and `package.json`, formats, checks, builds, commits, and tags.
-
-Push with `git push --follow-tags`, then upload the `.tar.gz` to the Zelos marketplace.
-
-## Layout Constraints
-
-- `vite.config.ts` uses `base: "./"` so assets resolve correctly from `zelos-app://.../{entry}`
-- `extension.toml` points at `dist/index.html` — freshly created projects already include it, but you must rebuild after editing source
-- Avoid root-absolute asset paths like `/assets/...`
+The release workflow checks, tests, builds and packages the extension, then attaches the
+archive to a GitHub release.
