@@ -1,12 +1,7 @@
 import type { ExtensionEntry } from "@zeloscloud/app-extension-sdk";
 import { describe, expect, it } from "vitest";
 import { discoverCanTx, resolveAgentStatus, type DiscoverInputs } from "./capability";
-import {
-  canActionPath,
-  CAN_EXTENSION_ID,
-  REQUIRED_CAN_METHODS,
-  resolveCanActionPrefix,
-} from "./types";
+import { canActionPath, CAN_EXTENSION_ID, REQUIRED_CAN_METHODS } from "./types";
 
 const runningCanExt: ExtensionEntry = {
   id: CAN_EXTENSION_ID,
@@ -24,8 +19,8 @@ const localInstallCanExt: ExtensionEntry = {
 
 const stoppedCanExt: ExtensionEntry = { ...runningCanExt, state: "stopped" };
 
-function allRequiredActionPaths(prefix = "CAN"): string[] {
-  return REQUIRED_CAN_METHODS.map((m) => canActionPath(m, prefix));
+function allRequiredActionPaths(): string[] {
+  return REQUIRED_CAN_METHODS.map((m) => canActionPath(m));
 }
 
 function baseDiscoveryInput(overrides: Partial<DiscoverInputs> = {}): DiscoverInputs {
@@ -80,10 +75,7 @@ describe("resolveAgentStatus", () => {
   });
 
   it("returns no-ready-buses with missingMethods detail when required actions are missing", () => {
-    const incomplete = [
-      canActionPath("get_tx_state", "CAN"),
-      canActionPath("list_messages", "CAN"),
-    ];
+    const incomplete = [canActionPath("get_tx_state"), canActionPath("list_messages")];
     const status = resolveAgentStatus("a:1", [runningCanExt], incomplete, undefined);
     expect(status.kind).toBe("no-ready-buses");
     if (status.kind === "no-ready-buses") {
@@ -119,12 +111,11 @@ describe("resolveAgentStatus", () => {
   });
 
   it("names both installs when two are running, in either listed order", () => {
-    const dual = [...allRequiredActionPaths("can"), ...allRequiredActionPaths("CAN")];
     for (const exts of [
       [runningCanExt, localInstallCanExt],
       [localInstallCanExt, runningCanExt],
     ]) {
-      const status = resolveAgentStatus("a:1", exts, dual, ["busA"]);
+      const status = resolveAgentStatus("a:1", exts, allRequiredActionPaths(), ["busA"]);
       expect(status.kind).toBe("ready");
       expect(status.extension?.id).toBe("local.can");
       expect(status.ambiguousInstalls?.map((e) => e.id)).toEqual(["local.can", CAN_EXTENSION_ID]);
@@ -222,73 +213,19 @@ describe("discoverCanTx", () => {
   });
 });
 
-describe("action namespace discovery", () => {
-  it("resolves whichever namespace the agent serves", () => {
-    expect(resolveCanActionPrefix(allRequiredActionPaths("CAN"))).toBe("CAN");
-    expect(resolveCanActionPrefix(allRequiredActionPaths("can"))).toBe("can");
+describe("action surface", () => {
+  it("returns extension-outdated when the running extension serves its methods under another name", () => {
+    const olderPaths = REQUIRED_CAN_METHODS.map((m) => `can/${m}`);
+    const status = resolveAgentStatus("a:1", [runningCanExt], olderPaths, undefined);
+    expect(status).toEqual({ agent: "a:1", kind: "extension-outdated", extension: runningCanExt });
   });
 
-  it("resolves from a partial surface, so a wrong-version extension is still identified", () => {
-    // The tab then names the missing methods instead of reporting no CAN extension.
-    const partial = [canActionPath("get_tx_state", "CAN"), canActionPath("send_raw", "CAN")];
-    expect(resolveCanActionPrefix(partial)).toBe("CAN");
+  it("does not call a starting extension outdated: it serves no actions yet", () => {
+    const status = resolveAgentStatus("a:1", [runningCanExt], [], undefined);
+    expect(status.kind).toBe("no-ready-buses");
   });
 
-  it("prefers the namespace serving the discovery action over a fuller stranger", () => {
-    const midRegistration = [
-      canActionPath("list_codecs", "CAN"),
-      canActionPath("get_tx_state", "CAN"),
-      "serial/send_raw",
-      "serial/send_message",
-      "serial/list_messages",
-    ];
-    expect(resolveCanActionPrefix(midRegistration)).toBe("CAN");
-  });
-
-  it("rejects a nested namespace rather than aiming a frame under the wrong bus", () => {
-    const perBus = [
-      "CAN/can0/list_codecs",
-      "CAN/can0/send_raw",
-      "CAN/can1/list_codecs",
-      "CAN/can1/send_raw",
-    ];
-    expect(resolveCanActionPrefix(perBus)).toBeNull();
-  });
-
-  it("ignores paths that are not CAN actions at all", () => {
-    expect(resolveCanActionPrefix(["unrelated/thing"])).toBeNull();
-    expect(resolveCanActionPrefix(["list_codecs"])).toBeNull();
-    expect(resolveCanActionPrefix(["/list_codecs"])).toBeNull();
-    expect(resolveCanActionPrefix([])).toBeNull();
-  });
-
-  it("is deterministic when one agent serves two namespaces", () => {
-    const mixed = [...allRequiredActionPaths("CAN"), canActionPath("list_codecs", "zz-other")];
-    expect(resolveCanActionPrefix(mixed)).toBe("CAN");
-    expect(resolveCanActionPrefix([...mixed].reverse())).toBe("CAN");
-  });
-
-  it("is stable in both orders when two namespaces both serve the full surface", () => {
-    const dual = [...allRequiredActionPaths("can"), ...allRequiredActionPaths("CAN")];
-    expect(resolveCanActionPrefix(dual)).toBe("can");
-    expect(resolveCanActionPrefix([...dual].reverse())).toBe("can");
-  });
-
-  it("carries the resolved namespace on the ready status", () => {
-    const lowercase = resolveAgentStatus("a:1", [runningCanExt], allRequiredActionPaths("can"), [
-      "bus0",
-    ]);
-    expect(lowercase.kind).toBe("ready");
-    expect(lowercase.actionPrefix).toBe("can");
-
-    const current = resolveAgentStatus("a:1", [runningCanExt], allRequiredActionPaths("CAN"), [
-      "bus0",
-    ]);
-    expect(current.kind).toBe("ready");
-    expect(current.actionPrefix).toBe("CAN");
-  });
-
-  it("reports every method missing when no namespace serves CAN at all", () => {
+  it("reports every method missing when the agent serves no CAN action", () => {
     const status = resolveAgentStatus("a:1", [runningCanExt], ["unrelated/thing"], ["bus0"]);
     expect(status.kind).toBe("no-ready-buses");
     if (status.kind === "no-ready-buses") {

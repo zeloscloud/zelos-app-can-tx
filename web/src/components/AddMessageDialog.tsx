@@ -25,19 +25,13 @@ import {
   type TransmitMode,
   type TransmitRow,
 } from "@/lib/transmit-store";
-import {
-  findMessageByAddress,
-  messageAddress,
-  type DbcMessage,
-  type DbcMessageSummary,
-} from "@/lib/types";
+import type { DbcMessage, DbcMessageSummary } from "@/lib/types";
 
 export interface AddMessageDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   bridge: BridgeTransport;
   agentAddress: string;
-  actionPrefix: string;
   bus: string;
   editRow?: TransmitRow | null;
   onSave: (row: NewTransmitRow, editId: string | null) => void;
@@ -48,7 +42,6 @@ export function AddMessageDialog({
   onOpenChange,
   bridge,
   agentAddress,
-  actionPrefix,
   bus,
   editRow,
   onSave,
@@ -74,26 +67,19 @@ export function AddMessageDialog({
   const [submitError, setSubmitError] = React.useState<string | null>(null);
 
   // The DBC hash from the bus snapshot keys both queries, so a DBC reload refetches them.
-  const snapshotQuery = useBusSnapshot(bridge, agentAddress, actionPrefix, bus);
+  const snapshotQuery = useBusSnapshot(bridge, agentAddress, bus);
   const dbcHash = snapshotQuery.data?.bus?.dbc?.hash ?? null;
 
   const catalogQuery = useQuery({
-    queryKey: ["can-list-messages", agentAddress, actionPrefix, bus, dbcHash ?? "no-hash"],
-    queryFn: async () => listMessages(bridge, agentAddress, actionPrefix, bus),
+    queryKey: ["can-list-messages", agentAddress, bus, dbcHash ?? "no-hash"],
+    queryFn: async () => listMessages(bridge, agentAddress, bus),
     enabled: open && mode === "dbc" && !!bus,
     staleTime: dbcHash ? Infinity : 30_000,
   });
 
   const describeQuery = useQuery({
-    queryKey: [
-      "can-describe-message",
-      agentAddress,
-      actionPrefix,
-      bus,
-      dbcMessage,
-      dbcHash ?? "no-hash",
-    ],
-    queryFn: async () => describeMessage(bridge, agentAddress, actionPrefix, bus, dbcMessage),
+    queryKey: ["can-describe-message", agentAddress, bus, dbcMessage, dbcHash ?? "no-hash"],
+    queryFn: async () => describeMessage(bridge, agentAddress, bus, dbcMessage),
     enabled: open && mode === "dbc" && !!bus && !!dbcMessage,
     staleTime: dbcHash ? Infinity : 30_000,
   });
@@ -104,10 +90,7 @@ export function AddMessageDialog({
   const [seededMessage, setSeededMessage] = React.useState<DbcMessage | undefined>(undefined);
   if (selectedDbcMessage && selectedDbcMessage !== seededMessage) {
     setSeededMessage(selectedDbcMessage);
-    const holdsEditRowMessage =
-      editRow &&
-      (messageAddress(selectedDbcMessage) === editRow.message ||
-        selectedDbcMessage.name === editRow.message);
+    const holdsEditRowMessage = editRow && selectedDbcMessage.key === editRow.message;
     if (!holdsEditRowMessage) {
       const next: Record<string, string> = {};
       for (const sig of selectedDbcMessage.signals) {
@@ -784,7 +767,7 @@ function DbcMessageCombobox({
 }: {
   messages: readonly DbcMessageSummary[];
   value: string;
-  onValueChange: (address: string) => void;
+  onValueChange: (key: string) => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -810,7 +793,7 @@ function DbcMessageCombobox({
     return dupes;
   }, [messages]);
 
-  const selected = findMessageByAddress(messages, value);
+  const selected = messages.find((m) => m.key === value);
 
   return (
     <PopoverPrimitive.Root
@@ -864,14 +847,13 @@ function DbcMessageCombobox({
               <li className="px-3 py-2 text-xs text-muted-foreground">No matches</li>
             ) : (
               filtered.map((m) => {
-                const address = messageAddress(m);
-                const isActive = address === value;
+                const isActive = m.key === value;
                 return (
-                  <li key={address}>
+                  <li key={m.key}>
                     <button
                       type="button"
                       onClick={() => {
-                        onValueChange(address);
+                        onValueChange(m.key);
                         setOpen(false);
                       }}
                       className={

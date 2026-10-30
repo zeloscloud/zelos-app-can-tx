@@ -21,11 +21,10 @@ import {
 export async function listCodecs(
   bridge: BridgeTransport,
   agent: string,
-  prefix: string,
 ): Promise<{ codecs: string[] }> {
   const res = await actions.execute<{ codecs: string[] }>(bridge, {
     agent,
-    action: canActionPath(CAN_METHODS.listCodecs, prefix),
+    action: canActionPath(CAN_METHODS.listCodecs),
     params: {},
   });
   ensurePass(res);
@@ -35,12 +34,11 @@ export async function listCodecs(
 export async function getBusSnapshot(
   bridge: BridgeTransport,
   agent: string,
-  prefix: string,
   codec: string,
 ): Promise<CanBusSnapshot> {
   const res = await actions.execute<CanBusSnapshot>(bridge, {
     agent,
-    action: canActionPath(CAN_METHODS.getTxState, prefix),
+    action: canActionPath(CAN_METHODS.getTxState),
     params: { codec },
   });
   ensurePass(res);
@@ -50,13 +48,12 @@ export async function getBusSnapshot(
 export async function sendRaw(
   bridge: BridgeTransport,
   agent: string,
-  prefix: string,
   codec: string,
   params: SendRawParams,
 ): Promise<void> {
   const res = await actions.execute(bridge, {
     agent,
-    action: canActionPath(CAN_METHODS.sendRaw, prefix),
+    action: canActionPath(CAN_METHODS.sendRaw),
     params: { codec, ...params },
   });
   ensurePass(res);
@@ -65,13 +62,12 @@ export async function sendRaw(
 export async function startPeriodicRaw(
   bridge: BridgeTransport,
   agent: string,
-  prefix: string,
   codec: string,
   params: StartPeriodicRawParams,
 ): Promise<StartPeriodicResult> {
   const res = await actions.execute<StartPeriodicResult>(bridge, {
     agent,
-    action: canActionPath(CAN_METHODS.startPeriodicRaw, prefix),
+    action: canActionPath(CAN_METHODS.startPeriodicRaw),
     params: { codec, ...params },
   });
   ensurePass(res);
@@ -81,13 +77,12 @@ export async function startPeriodicRaw(
 export async function stopPeriodic(
   bridge: BridgeTransport,
   agent: string,
-  prefix: string,
   codec: string,
   params: StopPeriodicParams,
 ): Promise<void> {
   const res = await actions.execute(bridge, {
     agent,
-    action: canActionPath(CAN_METHODS.stopPeriodic, prefix),
+    action: canActionPath(CAN_METHODS.stopPeriodic),
     params: { codec, ...params },
   });
   ensurePass(res);
@@ -96,12 +91,11 @@ export async function stopPeriodic(
 export async function listMessages(
   bridge: BridgeTransport,
   agent: string,
-  prefix: string,
   codec: string,
 ): Promise<DbcCatalog> {
   const res = await actions.execute<DbcCatalog>(bridge, {
     agent,
-    action: canActionPath(CAN_METHODS.listMessages, prefix),
+    action: canActionPath(CAN_METHODS.listMessages),
     params: { codec },
   });
   ensurePass(res);
@@ -111,13 +105,12 @@ export async function listMessages(
 export async function describeMessage(
   bridge: BridgeTransport,
   agent: string,
-  prefix: string,
   codec: string,
   message: string,
 ): Promise<DbcMessageDescription> {
   const res = await actions.execute<DbcMessageDescription>(bridge, {
     agent,
-    action: canActionPath(CAN_METHODS.describeMessage, prefix),
+    action: canActionPath(CAN_METHODS.describeMessage),
     params: { codec, message },
   });
   ensurePass(res);
@@ -127,13 +120,12 @@ export async function describeMessage(
 export async function sendMessage(
   bridge: BridgeTransport,
   agent: string,
-  prefix: string,
   codec: string,
   params: SendMessageParams,
 ): Promise<void> {
   const res = await actions.execute(bridge, {
     agent,
-    action: canActionPath(CAN_METHODS.sendMessage, prefix),
+    action: canActionPath(CAN_METHODS.sendMessage),
     params: { codec, ...params },
   });
   ensurePass(res);
@@ -142,13 +134,12 @@ export async function sendMessage(
 export async function startPeriodicMessage(
   bridge: BridgeTransport,
   agent: string,
-  prefix: string,
   codec: string,
   params: StartPeriodicMessageParams,
 ): Promise<StartPeriodicResult> {
   const res = await actions.execute<StartPeriodicResult>(bridge, {
     agent,
-    action: canActionPath(CAN_METHODS.startPeriodicMessage, prefix),
+    action: canActionPath(CAN_METHODS.startPeriodicMessage),
     params: { codec, ...params },
   });
   ensurePass(res);

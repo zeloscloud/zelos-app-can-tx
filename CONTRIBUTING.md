@@ -69,8 +69,8 @@ of a live workspace and configure a bus.
 
 `just dev` serves the tab at `http://localhost:5173/tab/` against the mock host of the SDK and
 a mock CAN extension with two buses and a demo DBC. Add `?mock=<state>` to the URL to see
-another state: `can-extension-missing`, `can-extension-stopped`, `no-ready-buses` or
-`multi-agent`.
+another state: `can-extension-missing`, `can-extension-stopped`, `can-extension-outdated`,
+`no-ready-buses` or `multi-agent`.
 
 ## Packaging
 

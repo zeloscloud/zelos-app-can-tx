@@ -3,6 +3,7 @@
 import type { MockBridge } from "@zeloscloud/app-extension-sdk";
 
 import {
+  CAN_ACTION_PREFIX,
   CAN_EXTENSION_ID,
   CAN_METHODS,
   REQUIRED_CAN_METHODS,
@@ -16,7 +17,12 @@ import {
 } from "../lib/types";
 
 export type MockScenario =
-  "ready" | "can-extension-missing" | "can-extension-stopped" | "no-ready-buses" | "multi-agent";
+  | "ready"
+  | "can-extension-missing"
+  | "can-extension-stopped"
+  | "can-extension-outdated"
+  | "no-ready-buses"
+  | "multi-agent";
 
 export interface MockHostOptions {
   /** `"multi-agent"`: `remote:2300` is ready and `localhost:2300` lacks the extension. */
@@ -32,6 +38,9 @@ interface SimAgent {
   address: string;
   extInstalled: boolean;
   extState: "installed" | "running" | "stopped" | "failed";
+  extVersion: string;
+  /** Older CAN extensions serve the same methods under `can/`. */
+  actionPrefix: string;
   exposesActions: boolean;
   buses: Map<string, SimBus>;
 }
@@ -42,8 +51,6 @@ interface MockDbcParams {
   period_ms: number;
   mux?: string;
 }
-
-const MOCK_ACTION_PREFIX = "CAN";
 
 const DEMO_DBC: { dbc_name: string; messages: DbcMessage[] } = {
   dbc_name: "demo.dbc",
@@ -185,6 +192,8 @@ function buildReadyAgent(
     address,
     extInstalled: true,
     extState: "running",
+    extVersion: "0.1.15",
+    actionPrefix: CAN_ACTION_PREFIX,
     exposesActions: true,
     buses: new Map(busNames.map((n) => [n, buildBus(n)])),
   };
@@ -200,11 +209,15 @@ function buildAgent(address: string, scenario: MockScenario): SimAgent {
         address,
         extInstalled: false,
         extState: "installed",
+        extVersion: "0.1.15",
+        actionPrefix: CAN_ACTION_PREFIX,
         exposesActions: false,
         buses: new Map(),
       };
     case "can-extension-stopped":
       return { ...buildReadyAgent(address), extState: "stopped", exposesActions: false };
+    case "can-extension-outdated":
+      return { ...buildReadyAgent(address), extVersion: "0.1.14", actionPrefix: "can/" };
     case "no-ready-buses":
       return { ...buildReadyAgent(address, []), exposesActions: false };
   }
@@ -302,7 +315,7 @@ function buildExtensionsList(agentMap: Map<string, SimAgent>) {
   > = {};
   for (const [addr, a] of agentMap) {
     out[addr] = a.extInstalled
-      ? [{ id: CAN_EXTENSION_ID, name: "CAN", version: "0.1.12", state: a.extState }]
+      ? [{ id: CAN_EXTENSION_ID, name: "CAN", version: a.extVersion, state: a.extState }]
       : [];
   }
   return out;
@@ -315,7 +328,7 @@ function buildActionsList(agentMap: Map<string, SimAgent>) {
       out[addr] = [];
       continue;
     }
-    out[addr] = REQUIRED_CAN_METHODS.map((m) => `${MOCK_ACTION_PREFIX}/${m}`);
+    out[addr] = REQUIRED_CAN_METHODS.map((m) => `${a.actionPrefix}${m}`);
   }
   return out;
 }
@@ -345,12 +358,10 @@ async function handleActionExecute(agentMap: Map<string, SimAgent>, params: unkn
   const agent = agentMap.get(agentAddr);
   if (!agent) throw new Error(`mock-host: unknown agent "${agentAddr}"`);
 
-  // Asserted, not stripped: a wrong prefix means the tab resolved the namespace wrongly.
-  const expected = `${MOCK_ACTION_PREFIX}/`;
-  if (!action.startsWith(expected)) {
-    throw new Error(`mock-host: action path doesn't start with ${expected}: ${action}`);
+  if (!action.startsWith(CAN_ACTION_PREFIX)) {
+    throw new Error(`mock-host: action path doesn't start with ${CAN_ACTION_PREFIX}: ${action}`);
   }
-  const methodName = action.slice(expected.length);
+  const methodName = action.slice(CAN_ACTION_PREFIX.length);
 
   if (methodName === CAN_METHODS.listCodecs) {
     return { status: "pass", result: { codecs: [...agent.buses.keys()] } };

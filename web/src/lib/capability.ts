@@ -2,13 +2,18 @@ import type { AppBridgeWorkspaceInfo, ExtensionEntry } from "@zeloscloud/app-ext
 
 import {
   canActionPath,
+  CAN_ACTION_PREFIX,
   CAN_EXTENSION_INSTALL_IDS,
   REQUIRED_CAN_METHODS,
-  resolveCanActionPrefix,
 } from "./types";
 
 type AgentStatusKind =
-  "ready" | "extension-missing" | "extension-stopped" | "no-ready-buses" | "discovering-codecs";
+  | "ready"
+  | "extension-missing"
+  | "extension-stopped"
+  | "extension-outdated"
+  | "no-ready-buses"
+  | "discovering-codecs";
 
 interface ReadyBus {
   name: string;
@@ -20,8 +25,6 @@ export interface AgentStatus {
   extension?: ExtensionEntry;
   /** Set only when `kind === "ready"`. */
   buses?: readonly ReadyBus[];
-  /** Set only when `kind === "ready"`, the only state in which to issue an action. */
-  actionPrefix?: string;
   missingMethods?: readonly string[];
   /** Set when more than one CAN install runs: no action path says which one a transmit reaches. */
   ambiguousInstalls?: readonly ExtensionEntry[];
@@ -98,17 +101,10 @@ function resolveRunningStatus(
   actionPaths: readonly string[],
   codecs: readonly string[] | undefined,
 ): AgentStatus {
-  const prefix = resolveCanActionPrefix(actionPaths);
-  if (prefix === null) {
-    return {
-      agent,
-      kind: "no-ready-buses",
-      extension: ext,
-      missingMethods: [...REQUIRED_CAN_METHODS],
-    };
+  const missing = missingCanMethods(actionPaths);
+  if (missing.length === REQUIRED_CAN_METHODS.length && servesCanMethodsElsewhere(actionPaths)) {
+    return { agent, kind: "extension-outdated", extension: ext };
   }
-
-  const missing = missingCanMethods(actionPaths, prefix);
   if (missing.length > 0) {
     return { agent, kind: "no-ready-buses", extension: ext, missingMethods: missing };
   }
@@ -125,15 +121,19 @@ function resolveRunningStatus(
     kind: "ready",
     extension: ext,
     buses: codecs.map((name) => ({ name })),
-    actionPrefix: prefix,
   };
 }
 
-/** Empty means the namespace serves the full surface, the gate for every action on it. */
-export function missingCanMethods(
-  actionPaths: readonly string[],
-  prefix: string,
-): readonly string[] {
+/** An extension that serves no actions yet is still starting; one that serves them under another name is older. */
+function servesCanMethodsElsewhere(actionPaths: readonly string[]): boolean {
+  const methods = new Set<string>(REQUIRED_CAN_METHODS);
+  return actionPaths.some(
+    (p) => !p.startsWith(CAN_ACTION_PREFIX) && methods.has(p.slice(p.lastIndexOf("/") + 1)),
+  );
+}
+
+/** Empty means the extension serves the full surface, the gate for every action on it. */
+export function missingCanMethods(actionPaths: readonly string[]): readonly string[] {
   const actionSet = new Set(actionPaths);
-  return REQUIRED_CAN_METHODS.filter((m) => !actionSet.has(canActionPath(m, prefix)));
+  return REQUIRED_CAN_METHODS.filter((m) => !actionSet.has(canActionPath(m)));
 }

@@ -10,18 +10,17 @@ const SNAPSHOT_POLL_MS = 1_000;
 export function useBusSnapshot(
   bridge: BridgeTransport | null,
   agent: string | null,
-  prefix: string | null,
   bus: string | null,
 ): UseQueryResult<CanBusSnapshot> {
   return useQuery<CanBusSnapshot>({
-    queryKey: ["can-bus-snapshot", agent, prefix, bus],
+    queryKey: ["can-bus-snapshot", agent, bus],
     queryFn: async () => {
-      if (!bridge || !agent || !bus || !prefix) {
-        throw new Error("useBusSnapshot: bridge/agent/bus/prefix missing");
+      if (!bridge || !agent || !bus) {
+        throw new Error("useBusSnapshot: bridge/agent/bus missing");
       }
-      return await getBusSnapshot(bridge, agent, prefix, bus);
+      return await getBusSnapshot(bridge, agent, bus);
     },
-    enabled: bridge !== null && agent !== null && bus !== null && prefix !== null,
+    enabled: bridge !== null && agent !== null && bus !== null,
     staleTime: SNAPSHOT_POLL_MS,
     refetchInterval: SNAPSHOT_POLL_MS,
     refetchOnWindowFocus: true,

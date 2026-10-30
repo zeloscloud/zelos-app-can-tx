@@ -9,7 +9,7 @@ import {
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import { CAN_EXTENSION_INSTALL_IDS, resolveCanActionPrefix } from "../lib/types";
+import { CAN_EXTENSION_INSTALL_IDS } from "../lib/types";
 import { listCodecs } from "../lib/can-bridge";
 import { discoverCanTx, missingCanMethods, type CanTxDiscovery } from "../lib/capability";
 
@@ -42,26 +42,23 @@ export function useCanDiscovery(input: UseCanDiscoveryInput): {
   });
 
   // Only agents running the full CAN surface: any other answers each poll with an unknown action.
-  const codecTargets = useMemo<{ agent: string; prefix: string }[]>(() => {
+  const codecTargets = useMemo<string[]>(() => {
     const byAgent = extensionsQuery.data;
     const actionsByAgent = actionsQuery.data;
     if (!byAgent || !actionsByAgent) return [];
-    const result: { agent: string; prefix: string }[] = [];
+    const result: string[] = [];
     for (const [agent, exts] of Object.entries(byAgent)) {
       if (!exts.some((e) => CAN_EXTENSION_INSTALL_IDS.has(e.id) && e.state === "running")) continue;
-      const paths = actionsByAgent[agent] ?? [];
-      const prefix = resolveCanActionPrefix(paths);
-      if (prefix === null || missingCanMethods(paths, prefix).length > 0) continue;
-      result.push({ agent, prefix });
+      if (missingCanMethods(actionsByAgent[agent] ?? []).length > 0) continue;
+      result.push(agent);
     }
-    return result.sort((a, b) => a.agent.localeCompare(b.agent));
+    return result.sort();
   }, [extensionsQuery.data, actionsQuery.data]);
 
   const codecQueries = useQueries({
-    queries: codecTargets.map(({ agent, prefix }) => ({
-      // An extension update can change the namespace, so the cached list must not carry over.
-      queryKey: ["can-list-codecs", agent, prefix],
-      queryFn: async () => listCodecs(input.bridge!, agent, prefix),
+    queries: codecTargets.map((agent) => ({
+      queryKey: ["can-list-codecs", agent],
+      queryFn: async () => listCodecs(input.bridge!, agent),
       enabled,
       staleTime: 2000,
       refetchInterval: enabled ? 5000 : false,
@@ -70,7 +67,7 @@ export function useCanDiscovery(input: UseCanDiscoveryInput): {
 
   const codecsByAgent = useMemo<Record<string, string[] | undefined>>(() => {
     const out: Record<string, string[] | undefined> = {};
-    codecTargets.forEach(({ agent }, i) => {
+    codecTargets.forEach((agent, i) => {
       out[agent] = codecQueries[i]?.data?.codecs;
     });
     return out;

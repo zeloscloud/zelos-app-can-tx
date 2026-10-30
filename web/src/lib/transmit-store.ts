@@ -19,7 +19,7 @@ export interface TransmitRow {
   is_fd?: boolean;
 
   // ─── DBC fields (mode === "dbc") ─────────────────────────────────────
-  /** The message's key, or its name on an extension without keys. */
+  /** The message's `key` from `list_messages`. */
   message?: string;
   /** Empty string when not multiplexed; integer or label otherwise. */
   mux?: string;

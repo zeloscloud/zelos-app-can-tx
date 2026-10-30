@@ -69,9 +69,8 @@ function DiscoveryView({
     const address = dialogState.mode === "add" ? dialogState.agent : dialogState.row.agent;
     const bus = dialogState.mode === "add" ? dialogState.bus : dialogState.row.bus;
     const found = discovery.agents.find((a) => a.agent === address);
-    if (!found || found.kind !== "ready" || !found.buses?.length || !found.actionPrefix)
-      return null;
-    return { agentAddress: address, bus, actionPrefix: found.actionPrefix };
+    if (!found || found.kind !== "ready" || !found.buses?.length) return null;
+    return { agentAddress: address, bus };
   }, [dialogState, discovery]);
 
   const handleCopyLogs = React.useCallback(async () => {
@@ -155,7 +154,6 @@ function DiscoveryView({
           }}
           bridge={bridge}
           agentAddress={dialogTarget.agentAddress}
-          actionPrefix={dialogTarget.actionPrefix}
           bus={dialogTarget.bus}
           editRow={dialogState?.mode === "edit" ? dialogState.row : null}
           onSave={handleSave}

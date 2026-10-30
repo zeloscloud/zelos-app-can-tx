@@ -35,16 +35,17 @@ describe("createRow", () => {
 });
 
 describe("defaultRowName", () => {
-  it("uses the DBC message name in dbc mode", () => {
+  it("uses the DBC message key in dbc mode", () => {
     const input: NewTransmitRow = {
       name: "",
       agent: "x",
       bus: "y",
       mode: "dbc",
       period_ms: 100,
-      message: "VehicleStatus",
+      message: "0334_VehicleStatus",
+      dbc_message_name: "VehicleStatus",
     };
-    expect(defaultRowName(input)).toBe("VehicleStatus");
+    expect(defaultRowName(input)).toBe("0334_VehicleStatus");
   });
 
   it("uses the CAN ID hex in raw mode", () => {

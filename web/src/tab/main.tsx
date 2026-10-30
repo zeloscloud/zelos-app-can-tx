@@ -29,6 +29,7 @@ function readScenarioFromQuery(): MockScenario {
   switch (param) {
     case "can-extension-missing":
     case "can-extension-stopped":
+    case "can-extension-outdated":
     case "no-ready-buses":
     case "multi-agent":
       return param;
