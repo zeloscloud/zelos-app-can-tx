@@ -1,7 +1,7 @@
 {
   "name": "zelos-app-can-tx",
   "private": true,
-  "version": "0.1.16",
+  "version": "0.2.0",
   "type": "module",
   "description": "Send CAN and CAN-FD frames from a Zelos tab: raw bytes or DBC messages with signals, one-shot or periodic, with live receive counters and transmit errors per bus. Needs the CAN extension running.",
   "author": "Zelos",

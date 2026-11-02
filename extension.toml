@@ -1,5 +1,5 @@
 name = "CAN Transmit"
-version = "0.1.16"
+version = "0.2.0"
 description = "Send CAN and CAN-FD frames from a Zelos tab: raw bytes or DBC messages with signals, one-shot or periodic, with live receive counters and transmit errors per bus. Needs the CAN extension running."
 author = "Zelos"
 repository = "https://github.com/zeloscloud/zelos-app-can-tx"
